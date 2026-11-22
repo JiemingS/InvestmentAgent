@@ -48,19 +48,24 @@ class ResearchService:
                 (row["article_ids"],),
             )
             return SearchResult(
-                query=row["query"], days=days, retrieved_at=row["retrieved_at"],
+                query=row["query"], days=abs(days), retrieved_at=row["retrieved_at"],
                 articles=[Article.model_validate(dict(article)) for article in articles],
             )
 
-    async def search(self, query: str, days: int, *, force: bool) -> SearchResult:
+    async def search(self, query: str, days: int | None, *, force: bool, news_only: bool = True) -> SearchResult:
         key = query.casefold()
+        # Positive keys belong to the existing news UI. Zero/negative keys are general web searches.
+        cache_days = (days or 0) * (1 if news_only else -1)
         async with self.search_lock:
             now = self.clock()
-            cached = self._cached_search(key, days)
+            cached = self._cached_search(key, cache_days)
             if cached and not force and now - cached.retrieved_at < SEARCH_TTL:
                 return cached
             try:
-                articles = await self.provider.search(query, days, now)
+                if news_only:
+                    articles = await self.provider.search(query, days, now)
+                else:
+                    articles = await self.provider.search(query, days, now, news_only=False)
             except ResearchError as error:
                 if not cached:
                     raise
@@ -87,9 +92,9 @@ class ResearchService:
                     ON CONFLICT(query_key, days) DO UPDATE SET query=excluded.query,
                         retrieved_at=excluded.retrieved_at, article_ids=excluded.article_ids
                     """,
-                    (key, days, query, retrieved.isoformat(), json.dumps([article.id for article in articles])),
+                    (key, cache_days, query, retrieved.isoformat(), json.dumps([article.id for article in articles])),
                 )
-            result = self._cached_search(key, days)
+            result = self._cached_search(key, cache_days)
             assert result is not None
             return result
 

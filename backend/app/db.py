@@ -66,6 +66,7 @@ def connect(path: Path, *, write: bool = False) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(path, timeout=5, isolation_level=None)
     connection.row_factory = sqlite3.Row
     try:
+        connection.execute("PRAGMA foreign_keys = ON")
         if write:
             connection.execute("BEGIN IMMEDIATE")
         yield connection

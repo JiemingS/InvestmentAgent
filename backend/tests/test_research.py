@@ -1,9 +1,12 @@
 from datetime import UTC, datetime, timedelta
+import asyncio
 import sqlite3
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.research import mcp_research
 from app.research.mcp_research import ResearchError, parse_exa, public_url
 from test_portfolio import record
 
@@ -29,6 +32,39 @@ def test_search_metadata_deduplicates_and_keeps_publication_distinct_from_retrie
     for unsafe in ("javascript:alert(1)", "https://localhost", "https://[::1]/", "https://a.internal/",
                    "https://user@news.example/", "https://news.example:8443/"):
         assert public_url(unsafe) is None
+
+
+def test_exa_general_web_mode_omits_news_category_and_optional_date_filter(monkeypatch):
+    requests = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def call_tool(self, name, args):
+            requests.append((name, args))
+            return SimpleNamespace(is_error=False, structured_content={"results": []})
+
+    monkeypatch.setattr(mcp_research, "Client", Client)
+
+    async def run():
+        provider = mcp_research.MCPResearch()
+        await provider.search("public science question", None, NOW, news_only=False)
+        await provider.search("public science question", 7, NOW, news_only=False)
+        await provider.search("financial headlines", 7, NOW)
+
+    asyncio.run(run())
+    assert all(name == "web_search_advanced_exa" for name, _ in requests)
+    first, second, news = [data for _, data in requests]
+    assert "category" not in first and "startPublishedDate" not in first
+    assert "category" not in second and second["startPublishedDate"] == (NOW - timedelta(days=7)).isoformat()
+    assert news["category"] == "news"
 
 
 def test_search_and_fetch_use_separate_database_cache_and_keep_attribution(tmp_path):

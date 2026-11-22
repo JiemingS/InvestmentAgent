@@ -73,7 +73,7 @@ def _publication(value: object, now: datetime) -> tuple[datetime | None, date | 
     return None, None
 
 
-def parse_exa(payload: object, retrieved: datetime, cutoff: datetime) -> list[Article]:
+def parse_exa(payload: object, retrieved: datetime, cutoff: datetime | None) -> list[Article]:
     if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
         raise ResearchError("Exa returned an unrecognized search response.")
     seen = set()
@@ -88,7 +88,7 @@ def parse_exa(payload: object, retrieved: datetime, cutoff: datetime) -> list[Ar
         if identity in seen:
             continue
         published_at, published_date = _publication(row.get("publishedDate"), retrieved)
-        if (published_at and published_at < cutoff) or (published_date and published_date < cutoff.date()):
+        if cutoff and ((published_at and published_at < cutoff) or (published_date and published_date < cutoff.date())):
             continue
         seen.add(identity)
         highlights = row.get("highlights")
@@ -125,17 +125,21 @@ class MCPResearch:
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
 
-    async def search(self, query: str, days: int, now: datetime) -> list[Article]:
-        cutoff = now - timedelta(days=days)
+    async def search(self, query: str, days: int | None, now: datetime, *, news_only: bool = True) -> list[Article]:
+        cutoff = now - timedelta(days=days) if days is not None else None
+        arguments = {
+            "query": query, "numResults": MAX_ARTICLES,
+            "enableHighlights": True, "highlightsMaxCharacters": SEARCH_EXCERPT_CHARS,
+            "textMaxCharacters": SEARCH_EXCERPT_CHARS,
+        }
+        if news_only:
+            arguments["category"] = "news"
+        if cutoff is not None:
+            arguments.update(startPublishedDate=cutoff.isoformat(), endPublishedDate=now.isoformat())
         try:
             async with asyncio.timeout(20):
                 async with Client(_exa_transport(self.api_key), mode="legacy", read_timeout_seconds=12) as client:
-                    result = await client.call_tool("web_search_advanced_exa", {
-                        "query": query, "category": "news", "numResults": MAX_ARTICLES,
-                        "startPublishedDate": cutoff.isoformat(), "endPublishedDate": now.isoformat(),
-                        "enableHighlights": True, "highlightsMaxCharacters": SEARCH_EXCERPT_CHARS,
-                        "textMaxCharacters": SEARCH_EXCERPT_CHARS,
-                    })
+                    result = await client.call_tool("web_search_advanced_exa", arguments)
         except Exception as error:
             raise ResearchError("Exa MCP is unavailable. Try again later.") from error
         if result.is_error:

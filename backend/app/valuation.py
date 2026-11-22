@@ -62,6 +62,7 @@ def value_portfolio(trades: list[Transaction], market: MarketDataService) -> Por
                     price = price * action.split_denominator / action.split_numerator
             position.latest_price = price
             position.quote_as_of = quote.price_as_of
+            position.quote_updated_at = quote.updated_at
             position.is_stale = quote.date != latest_session or history.is_stale
             position.is_partial = not quote.is_final
             position.market_value = ledger.holdings[position.symbol].value_at(price)

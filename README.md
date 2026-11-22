@@ -1,10 +1,14 @@
 # Personal Investment Intelligence Agent
 
-The app combines a local USD portfolio, cached Yahoo Finance daily prices, an official US economic calendar, and independently entered financial news research in a React and FastAPI interface.
+The app combines a local USD portfolio, cached Yahoo Finance daily prices, an official US economic calendar, financial news research, and a local Gemma agent in a React and FastAPI interface.
+
+See the technical guide for architecture, data flow, integration setup, and troubleshooting. [English](docs/technical-guide/TECHNICAL_GUIDE.en.md) · [简体中文](docs/technical-guide/TECHNICAL_GUIDE.zh-CN.md)
 
 ## Start on Windows
 
-Install Python 3.14, uv, and Node.js 24 with npm. From the repository root in PowerShell, run:
+Install Python 3.14, uv, and Node.js 24 with npm. Double-click `Start-InvestmentAgent.cmd` to start the app and open it in your default browser. The launcher reuses a running Ollama server or looks for Ollama on PATH and in the sibling `Ollama` folder. If Ollama or `gemma4:31b` is unavailable, the portfolio still starts.
+
+To launch only the development servers from PowerShell, run:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-start.ps1
@@ -30,7 +34,7 @@ Open [the portfolio](http://127.0.0.1:5173) or [the FastAPI documentation](http:
 
 ## Data and migrations
 
-The default databases are `.data/portfolio.sqlite3` and `.data/research.sqlite3` under the repository root. Set `INVESTMENT_DB_PATH` or `INVESTMENT_RESEARCH_DB_PATH` to an absolute path to override either one. Keep the two paths separate. The application applies sequential migrations on startup and records each schema version in `PRAGMA user_version`.
+The default databases are `.data/portfolio.sqlite3`, `.data/research.sqlite3`, and `.data/agent.sqlite3` under the repository root. Set `INVESTMENT_DB_PATH`, `INVESTMENT_RESEARCH_DB_PATH`, or `INVESTMENT_AGENT_DB_PATH` to an absolute path to override a database location. Keep the paths separate. The application applies sequential migrations on startup and records each schema version in `PRAGMA user_version`.
 
 To back up the database, stop the backend and copy the SQLite file to a private location. To restore, stop the backend, save a copy of the current file, replace it with the backup, and restart. Back up before upgrading schema versions.
 
@@ -44,9 +48,27 @@ To back up the database, stop the backend and copy the SQLite file to a private 
 ## Financial research
 
 - **Research** sends only the public topic or ticker entered in that view, plus the selected 7-, 30-, or 90-day window, to Exa MCP. It has no access to the transaction ledger. Search results are cached for 30 minutes and page excerpts for one day. When possible, an unavailable provider returns existing excerpts or results with a stale notice.
-- Exa's anonymous endpoint has a free, unpublished rate limit. Set `EXA_API_KEY` in the environment before launching to use an account's quota and rates. Exa publishes a monthly free credit allocation and usage-based pricing. [Exa MCP](https://exa.ai/docs/get-started/exa-mcp) · [Exa pricing](https://exa.ai/pricing)
+- The app can use Exa anonymously, subject to provider limits. Set `EXA_API_KEY` in the backend environment before launching to use your account's quota. [Exa MCP](https://exa.ai/docs/get-started/exa-mcp) · [Exa pricing](https://exa.ai/pricing)
 - The locked backend dependencies install the local MCP Fetch server. **Read page excerpt** sends a cached article's public URL to that server, which enforces its robots and public network restrictions. Some sites block automated retrieval. The app stores short text excerpts, source URLs, and separate publication, search, and page retrieval times. Publisher domain is shown when the search source does not provide a publisher name. Dates absent from source metadata stay blank. [MCP Fetch](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch)
 - The API docs cover `/api/events`, `/api/events/refresh`, `/api/events/bls/import`, `/api/research/recent`, `/api/research/search`, and `/api/research/articles/{article_id}/fetch`.
+
+## Local Gemma Agent
+
+Start Ollama with `ollama serve` if its desktop app or server is not running. The app connects to the installed `gemma4:31b` model at `http://127.0.0.1:11434`. For a different local port, set `INVESTMENT_OLLAMA_URL` to its literal loopback HTTP origin. Then start the development app and open **Local Agent**. The example button fills a VOO and QQQM question.
+
+- Gemma chooses native read-only tool calls. It can read local holdings and transactions and use the existing valuation, market, calendar, Exa and MCP Fetch services. It has no brokerage, credential, or trading tools.
+- General questions can receive a direct response without tools or citations. Current data and local records require evidence, and mixed questions combine sourced facts with model interpretation. For current date, time and weekday questions, the local clock defaults to America/Chicago and accepts an explicit IANA time zone.
+- The Agent can use general Exa web search for public verification. It can refine a query and choose MCP Fetch source IDs within the same turn. Date filters are optional. The Research page still uses its news search mode.
+- Personal data and chat context stay with the local backend and model. Agent search terms can use the latest question's public clauses, vetted public instrument identifiers from holdings tools, and locally generated translations or synonyms. The isolated expansion call sees only public clauses and approved instrument metadata. It cannot see the proposed query, portfolio amounts or chat history. Unsafe terms are rejected; approved alternatives help Gemma retry. MCP Fetch receives only public URLs resolved from that turn's search results. Planning sees ranked source IDs, domains, publication dates when available, and matching public query terms. It does not receive page instructions or raw excerpts.
+- The tool-disabled synthesis pass writes cited web answers, interpretations and conditional scenarios. It receives bounded, separately labeled Exa search excerpts and MCP Fetch page excerpts. The server renders local factual figures directly and drops answer items with unknown references or unmatched numerical tokens. Citation checks do not independently verify the model's interpretation.
+- Investment-journey questions use a full-ledger overview and chronological milestones. The answer separates the local timeline, current economic evidence, interpretations, scenarios, and conditional recommendations. If public evidence is insufficient, the Agent can still summarize local records and disclose the economic evidence gap.
+- Trading-session queries use completed exchange sessions, distinct from calendar-day lookbacks. The Agent displays average cost, valuation and whole-portfolio weights when available, and compares price-only changes over matched session dates. Missing quotes, unavailable weights and failed page fetches remain visible.
+- Each turn allows up to six planning rounds, twelve tool attempts, and four page-fetch attempts. The turn deadline is 150 seconds, with separate model and tool time budgets. The chat UI displays streaming activity and can cancel the request.
+- The **Local Agent** sidebar creates, restores, renames, and deletes conversations in the separate `.data/agent.sqlite3` database. Reloading restores the selected conversation with original answers and evidence. See [data storage](docs/DATA_STORAGE.md) for paths, retention, context limits, and restart behavior.
+- Use **Quick Prompts → Manage** above the composer to add, edit, delete, or reorder reusable prompts. A prompt button sends its saved body through the normal chat flow while preserving any unsent draft.
+- Use `POST /api/agent/chat` for a JSON result or `POST /api/agent/chat?stream=true` for newline-delimited activity and the final result.
+
+The development server is designed for local use. Portfolio and conversation APIs have no login or authentication layer.
 
 ## Verification
 
@@ -55,8 +77,11 @@ uv --directory backend run --locked pytest
 npm.cmd --prefix frontend ci --no-audit --no-fund
 npm.cmd --prefix frontend run typecheck
 npm.cmd --prefix frontend run build
+npm.cmd --prefix frontend test
 ```
+
+The Quick Prompts browser tests use an installed Chrome executable. Set `CHROME_PATH` to override its location.
 
 ## Open integrations
 
-Gemma orchestration and cited chat are planned for Milestone 4. FRED remains optional.
+FRED historical macroeconomic series are outside the current integration.

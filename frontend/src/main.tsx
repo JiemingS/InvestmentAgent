@@ -9,6 +9,7 @@ import './style.css'
 const MarketPanels = lazy(() => import('./MarketPanels'))
 const CalendarPanel = lazy(() => import('./CalendarPanel'))
 const ResearchPanel = lazy(() => import('./ResearchPanel'))
+const AgentPanel = lazy(() => import('./AgentPanel'))
 
 function emptyTrade(): TradeInput {
   return { symbol: '', side: 'BUY', trade_date: daysAgo(), quantity: '', unit_price: '', fees: '0', currency: 'USD' }
@@ -202,7 +203,10 @@ function App() {
 }
 
 function Workspace() {
-  const [view, setView] = useState<'portfolio' | 'calendar' | 'research'>('portfolio')
+  const [view, setView] = useState<'portfolio' | 'calendar' | 'research' | 'agent'>(() =>
+    sessionStorage.getItem('investment-agent.active-view') === 'agent' ? 'agent' : 'portfolio')
+  const [hasOpenedAgent, setHasOpenedAgent] = useState(view === 'agent')
+  useEffect(() => { sessionStorage.setItem('investment-agent.active-view', view) }, [view])
   return <>
     <nav className="primary-nav" aria-label="Main navigation">
       <button type="button" aria-current={view === 'portfolio' ? 'page' : undefined}
@@ -211,11 +215,16 @@ function Workspace() {
         onClick={() => setView('calendar')}>Economic calendar</button>
       <button type="button" aria-current={view === 'research' ? 'page' : undefined}
         onClick={() => setView('research')}>Research</button>
+      <button type="button" aria-current={view === 'agent' ? 'page' : undefined}
+        onClick={() => { setHasOpenedAgent(true); setView('agent') }}>Local Agent</button>
     </nav>
-    {view === 'portfolio' ? <App /> : <main>
+    {view === 'portfolio' ? <App /> : view !== 'agent' && <main key="research">
       <Suspense fallback={<p role="status">Loading workspace…</p>}>
         {view === 'calendar' ? <CalendarPanel /> : <ResearchPanel />}
       </Suspense>
+    </main>}
+    {hasOpenedAgent && <main className="agent-workspace" hidden={view !== 'agent'} key="agent">
+      <Suspense fallback={<p role="status">Loading local Agent…</p>}><AgentPanel /></Suspense>
     </main>}
   </>
 }

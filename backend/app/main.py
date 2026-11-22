@@ -9,6 +9,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from . import transactions
+from .agent.ollama import Ollama
+from .agent.conversations import ConversationStore
+from .agent.orchestrator import Agent
+from .agent.routes import router as agent_router
 from .db import migrate
 from .exchange import FIRST_MARKET_DATE
 from .market import MarketDataService, MarketProvider
@@ -74,6 +78,7 @@ def create_app(database: Path | None = None, provider: MarketProvider | None = N
     async def lifespan(application: FastAPI):
         migrate(application.state.database)
         migrate_research(application.state.research_database)
+        application.state.conversations.initialize()
         daily = asyncio.create_task(application.state.economic_calendar.refresh_daily())
         try:
             yield
@@ -90,13 +95,20 @@ def create_app(database: Path | None = None, provider: MarketProvider | None = N
     if research_database.resolve() == application.state.database.resolve():
         raise ValueError("The research database must be separate from the portfolio database.")
     application.state.research_database = research_database
+    conversation_default = application.state.database.with_name("agent.sqlite3")
+    conversation_path = Path(os.getenv("INVESTMENT_AGENT_DB_PATH", str(conversation_default)))
+    if conversation_path.resolve() in (application.state.database.resolve(), research_database.resolve()):
+        raise ValueError("The conversation database must be separate from portfolio and research data.")
+    application.state.conversations = ConversationStore(conversation_path)
     application.state.economic_calendar = CalendarService(
         research_database, OfficialCalendars(os.getenv("INVESTMENT_BLS_CONTACT")),
     )
     application.state.financial_research = ResearchService(
         research_database, MCPResearch(os.getenv("EXA_API_KEY")),
     )
+    application.state.local_agent = Agent(Ollama(os.getenv("INVESTMENT_OLLAMA_URL", "http://127.0.0.1:11434")))
     application.include_router(research_router)
+    application.include_router(agent_router)
 
     @application.exception_handler(OversellError)
     async def oversell_handler(_request: Request, error: OversellError):

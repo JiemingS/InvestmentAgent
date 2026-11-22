@@ -59,6 +59,7 @@ class Position(BaseModel):
     market_value: FixedDecimal | None = None
     unrealized_pnl: FixedDecimal | None = None
     quote_as_of: datetime | None = None
+    quote_updated_at: datetime | None = None
     is_stale: bool = False
     is_partial: bool = False
 

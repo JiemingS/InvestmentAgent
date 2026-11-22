@@ -31,6 +31,7 @@ def test_split_sale_and_historical_portfolio_value_use_each_days_holdings(tmp_pa
         assert Decimal(summary["market_value"]) == Decimal("186")
         assert Decimal(summary["unrealized_pnl"]) == Decimal("34.5")
         assert summary["quote_as_of"] == "2024-01-05T21:00:00Z"
+        assert position["quote_updated_at"] == "2024-01-06T18:00:00Z"
 
         response = client.get("/api/portfolio/history?start=2024-01-02&end=2024-01-05")
         assert response.status_code == 200
