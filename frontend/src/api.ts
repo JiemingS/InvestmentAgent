@@ -15,12 +15,45 @@ export type Position = {
   shares: string
   remaining_cost_basis: string
   average_cost_per_share: string
+  latest_price: string | null
+  market_value: string | null
+  unrealized_pnl: string | null
+  quote_as_of: string | null
+  is_stale: boolean
+  is_partial: boolean
 }
 
 export type Summary = {
   net_cash_contributed: string
   remaining_cost_basis: string
   realized_pnl: string
+  market_value: string | null
+  unrealized_pnl: string | null
+  quote_as_of: string | null
+  is_stale: boolean
+  is_partial: boolean
+  warnings: string[]
+}
+
+export type MarketHistory = {
+  symbol: string
+  provider: string
+  as_of: string | null
+  is_stale: boolean
+  warning: string | null
+  bars: {
+    date: string
+    open: string
+    high: string
+    low: string
+    close: string
+    is_final: boolean
+  }[]
+}
+
+export type PortfolioHistory = {
+  points: { date: string; market_value: string | null }[]
+  warnings: string[]
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -38,12 +71,28 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export async function loadPortfolio(signal?: AbortSignal) {
-  const [trades, positions, summary] = await Promise.all([
+  const [trades, valuation] = await Promise.all([
     request<Trade[]>('/transactions', { signal }),
-    request<Position[]>('/portfolio/positions', { signal }),
-    request<Summary>('/portfolio/summary', { signal }),
+    request<{ summary: Summary; positions: Position[] }>('/portfolio/valuation', { signal })
+      .then(data => ({ ...data, valuationError: null }))
+      .catch((error: unknown) => ({
+        summary: null, positions: [],
+        valuationError: error instanceof Error ? error.message : String(error),
+      })),
   ])
-  return { trades, positions, summary }
+  return { trades, ...valuation }
+}
+
+export function loadMarket(symbol: string, start: string, end: string, signal?: AbortSignal, force = false) {
+  const operation = force ? 'refresh' : 'history'
+  return request<MarketHistory>(
+    '/market/' + encodeURIComponent(symbol) + '/' + operation + '?' + new URLSearchParams({ start, end }),
+    { signal, method: force ? 'POST' : 'GET' },
+  )
+}
+
+export function loadHistory(start: string, end: string, signal?: AbortSignal) {
+  return request<PortfolioHistory>('/portfolio/history?' + new URLSearchParams({ start, end }), { signal })
 }
 
 export function saveTrade(trade: TradeInput, id: number | null) {

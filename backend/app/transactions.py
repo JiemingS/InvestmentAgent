@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .db import connect
-from .portfolio import calculate_portfolio
+from .market import cached_splits
+from .portfolio import Split, calculate_portfolio
 from .schemas import Transaction, TransactionInput
 
 
@@ -19,6 +20,13 @@ def _ledger(connection: sqlite3.Connection) -> list[Transaction]:
 def list_transactions(path: Path) -> list[Transaction]:
     with connect(path) as connection:
         return _ledger(connection)
+
+
+def _validate_ledger(connection: sqlite3.Connection) -> None:
+    calculate_portfolio(
+        _ledger(connection),
+        (Split(symbol, action) for symbol, action in cached_splits(connection)),
+    )
 
 
 def get_transaction(connection: sqlite3.Connection, transaction_id: int) -> Transaction:
@@ -39,7 +47,7 @@ def create_transaction(path: Path, data: TransactionInput) -> Transaction:
             """,
             {**data.model_dump(mode="json"), "now": now},
         )
-        calculate_portfolio(_ledger(connection))
+        _validate_ledger(connection)
         return get_transaction(connection, cursor.lastrowid)
 
 
@@ -60,7 +68,7 @@ def update_transaction(path: Path, transaction_id: int, data: TransactionInput) 
         )
         if cursor.rowcount == 0:
             raise TransactionNotFound(f"Transaction #{transaction_id} was not found.")
-        calculate_portfolio(_ledger(connection))
+        _validate_ledger(connection)
         return get_transaction(connection, transaction_id)
 
 
@@ -69,4 +77,4 @@ def delete_transaction(path: Path, transaction_id: int) -> None:
         cursor = connection.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
         if cursor.rowcount == 0:
             raise TransactionNotFound(f"Transaction #{transaction_id} was not found.")
-        calculate_portfolio(_ledger(connection))
+        _validate_ledger(connection)

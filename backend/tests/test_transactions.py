@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
+from app import db
 from app.main import create_app
 from test_portfolio import record, trade
 
@@ -22,7 +23,7 @@ def test_migration_and_crud_persist_across_restarts(tmp_path):
         assert original["symbol"] == "QQQM"
         assert original["quantity"] == "0.12345678"
     with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
         assert connection.execute("SELECT typeof(quantity) FROM transactions").fetchone()[0] == "text"
     with TestClient(create_app(database)) as second:
         assert second.get("/api/transactions").json() == [original]
@@ -38,6 +39,27 @@ def test_migration_and_crud_persist_across_restarts(tmp_path):
         assert third.put(url, json=trade()).status_code == 404
     with TestClient(create_app(database)) as fourth:
         assert fourth.get("/api/transactions").json() == []
+
+
+def test_upgrade_existing_version_one_database(tmp_path, monkeypatch):
+    database = tmp_path / "v1.sqlite3"
+    with monkeypatch.context() as develop:
+        develop.setattr(db, "MIGRATIONS", db.MIGRATIONS[:1])
+        db.migrate(database)
+    with db.connect(database, write=True) as connection:
+        connection.execute(
+            """
+            INSERT INTO transactions VALUES
+            (1, 'VOO', 'BUY', '2024-01-02', '0.125', '99.5', '0', 'USD',
+             '2024-01-02T16:00:00Z', '2024-01-02T16:00:00Z')
+            """
+        )
+    with TestClient(create_app(database)) as upgraded:
+        [preserved] = upgraded.get("/api/transactions").json()
+        assert preserved["quantity"] == "0.125"
+    with db.connect(database) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("SELECT count(*) FROM market_prices").fetchone()[0] == 0
 
 
 @pytest.mark.parametrize(

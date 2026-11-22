@@ -55,6 +55,12 @@ class Position(BaseModel):
     shares: FixedDecimal
     remaining_cost_basis: FixedDecimal
     average_cost_per_share: FixedDecimal
+    latest_price: FixedDecimal | None = None
+    market_value: FixedDecimal | None = None
+    unrealized_pnl: FixedDecimal | None = None
+    quote_as_of: datetime | None = None
+    is_stale: bool = False
+    is_partial: bool = False
 
 
 class PortfolioSummary(BaseModel):
@@ -65,3 +71,22 @@ class PortfolioSummary(BaseModel):
     realized_pnl: FixedDecimal
     market_value: FixedDecimal | None = None
     unrealized_pnl: FixedDecimal | None = None
+    quote_as_of: datetime | None = None
+    is_stale: bool = False
+    is_partial: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PortfolioValuation(BaseModel):
+    summary: PortfolioSummary
+    positions: list[Position]
+
+
+class PortfolioPoint(BaseModel):
+    date: date
+    market_value: FixedDecimal | None
+
+
+class PortfolioHistory(BaseModel):
+    points: list[PortfolioPoint]
+    warnings: list[str]

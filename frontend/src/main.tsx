@@ -1,30 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { deleteTrade, loadPortfolio, saveTrade } from './api'
 import type { Trade, TradeInput } from './api'
+import { daysAgo, money, quoteTime } from './format'
 import './style.css'
 
-const chicago = new Intl.DateTimeFormat('en', {
-  timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit',
-})
-
-function today() {
-  const parts = Object.fromEntries(chicago.formatToParts().map(part => [part.type, part.value]))
-  return [parts.year, parts.month, parts.day].join('-')
-}
+const MarketPanels = lazy(() => import('./MarketPanels'))
 
 function emptyTrade(): TradeInput {
-  return { symbol: '', side: 'BUY', trade_date: today(), quantity: '', unit_price: '', fees: '0', currency: 'USD' }
-}
-
-function money(value: string) {
-  const negative = value.startsWith('-')
-  const [whole, fraction = ''] = value.replace(/^-/, '').split('.')
-  const digits = fraction.padEnd(3, '0')
-  const cents = BigInt(whole) * 100n + BigInt(digits.slice(0, 2)) + (digits[2] >= '5' ? 1n : 0n)
-  return (negative && cents > 0n ? '−' : '') + '$' + (cents / 100n).toLocaleString('en-US') +
-    '.' + String(cents % 100n).padStart(2, '0')
+  return { symbol: '', side: 'BUY', trade_date: daysAgo(), quantity: '', unit_price: '', fees: '0', currency: 'USD' }
 }
 
 function App() {
@@ -40,7 +25,7 @@ function App() {
   useEffect(() => {
     const controller = new AbortController()
     loadPortfolio(controller.signal)
-      .then(setPortfolio)
+      .then(data => { if (!controller.signal.aborted) setPortfolio(data) })
       .catch(reason => { if (!controller.signal.aborted) setError(String(reason.message ?? reason)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -112,10 +97,19 @@ function App() {
       </header>
 
       <section className="metrics" aria-label="Portfolio summary" aria-busy={loading}>
+        <div><span>Market value</span><strong>{money(totals?.market_value ?? null)}</strong></div>
+        <div><span>Unrealized P&amp;L</span><strong>{money(totals?.unrealized_pnl ?? null)}</strong></div>
         <div><span>Net cash contributed</span><strong>{totals ? money(totals.net_cash_contributed) : '—'}</strong></div>
         <div><span>Remaining cost basis</span><strong>{totals ? money(totals.remaining_cost_basis) : '—'}</strong></div>
         <div><span>Realized P&amp;L</span><strong>{totals ? money(totals.realized_pnl) : '—'}</strong></div>
       </section>
+      {totals?.quote_as_of && <p className="quote-note">
+        Yahoo Finance · {totals.is_stale ? 'Stale cache · ' : ''}
+        {totals.is_partial ? 'Includes partial daily bars · ' : ''}
+        Oldest quote {quoteTime(totals.quote_as_of)} · Quotes may be delayed
+      </p>}
+      {totals?.warnings.map(warning => <p className="feedback" role="status" key={warning}>{warning}</p>)}
+      {portfolio?.valuationError && <p className="feedback error" role="alert">Valuation unavailable. {portfolio.valuationError}</p>}
 
       {error && <p className="feedback error" role="alert">{error}</p>}
       {notice && <p className="feedback" role="status">{notice}</p>}
@@ -131,7 +125,7 @@ function App() {
                 <label>Side<select value={trade.side} onChange={event => setTrade({ ...trade, side: event.target.value as TradeInput['side'] })}>
                   <option value="BUY">Buy</option><option value="SELL">Sell</option>
                 </select></label>
-                <label className="full">Trade date<input type="date" value={trade.trade_date} max={today()} required
+                <label className="full">Trade date<input type="date" value={trade.trade_date} max={daysAgo()} required
                   onChange={event => setTrade({ ...trade, trade_date: event.target.value })} /></label>
                 <label>Shares<input inputMode="decimal" value={trade.quantity} required
                   onChange={event => setTrade({ ...trade, quantity: event.target.value })} /></label>
@@ -152,21 +146,31 @@ function App() {
           <h2>Open positions</h2>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Symbol</th><th>Shares</th><th>Avg. cost / share</th><th>Cost basis</th></tr></thead>
+              <thead><tr><th>Symbol</th><th>Shares</th><th>Avg. cost / share</th><th>Cost basis</th><th>Latest price</th><th>Market value</th><th>Unrealized P&amp;L</th></tr></thead>
               <tbody>
                 {portfolio?.positions.map(position => <tr key={position.symbol}>
                   <th scope="row">{position.symbol}</th><td>{position.shares}</td>
                   <td title={position.average_cost_per_share}>{money(position.average_cost_per_share)}</td>
                   <td title={position.remaining_cost_basis}>{money(position.remaining_cost_basis)}</td>
+                  <td title={position.quote_as_of ? quoteTime(position.quote_as_of) : undefined}>
+                    {money(position.latest_price)}
+                    {position.latest_price !== null && position.is_stale && <small className="price-status">Stale</small>}
+                    {position.is_partial && <small className="price-status">Partial</small>}
+                  </td>
+                  <td>{money(position.market_value)}</td><td>{money(position.unrealized_pnl)}</td>
                 </tr>)}
-                {!portfolio?.positions.length && <tr><td colSpan={4} className="empty">
-                  {loading ? 'Loading positions…' : portfolio ? 'No open positions.' : 'Positions unavailable.'}
+                {!portfolio?.positions.length && <tr><td colSpan={7} className="empty">
+                  {loading ? 'Loading positions…' : portfolio?.summary ? 'No open positions.' : 'Positions unavailable.'}
                 </td></tr>}
               </tbody>
             </table>
           </div>
         </section>
       </div>
+
+      {portfolio?.summary && portfolio.trades.length > 0 && <Suspense fallback={<p className="muted">Loading market charts…</p>}>
+        <MarketPanels trades={portfolio.trades} positions={portfolio.positions} onRefresh={refresh} />
+      </Suspense>}
 
       <section className="panel ledger" aria-busy={loading}>
         <h2>Transaction history</h2>

@@ -21,6 +21,43 @@ MIGRATIONS = (
         """,
         "CREATE INDEX transactions_ledger_order ON transactions(trade_date, id)",
     ),
+    (
+        """
+        CREATE TABLE market_prices (
+            symbol TEXT NOT NULL,
+            date TEXT NOT NULL,
+            open TEXT NOT NULL,
+            high TEXT NOT NULL,
+            low TEXT NOT NULL,
+            close TEXT NOT NULL,
+            adj_close TEXT,
+            volume INTEGER NOT NULL,
+            price_as_of TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            is_final INTEGER NOT NULL,
+            PRIMARY KEY (symbol, date)
+        )
+        """,
+        """
+        CREATE TABLE market_actions (
+            symbol TEXT NOT NULL,
+            date TEXT NOT NULL,
+            dividend TEXT NOT NULL,
+            split_numerator INTEGER NOT NULL,
+            split_denominator INTEGER NOT NULL,
+            PRIMARY KEY (symbol, date)
+        )
+        """,
+        """
+        CREATE TABLE market_sync_state (
+            symbol TEXT PRIMARY KEY,
+            last_attempt_at TEXT NOT NULL,
+            last_success_at TEXT,
+            status TEXT NOT NULL,
+            error_message TEXT
+        )
+        """,
+    ),
 )
 
 
