@@ -1,0 +1,12 @@
+[project]
+name = "investment-agent"
+version = "0.1.0"
+requires-python = ">=3.14,<3.15"
+dependencies = ["fastapi>=0.135,<1", "uvicorn>=0.40,<1", "tzdata>=2025.3"]
+
+[dependency-groups]
+dev = ["httpx>=0.28,<1", "pytest>=9,<10"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
