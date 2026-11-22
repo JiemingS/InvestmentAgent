@@ -79,13 +79,15 @@ def connect(path: Path, *, write: bool = False) -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
-def migrate(path: Path) -> None:
+def migrate(path: Path, migrations=None) -> None:
+    if migrations is None:
+        migrations = MIGRATIONS
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect(path, write=True) as connection:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version > len(MIGRATIONS):
+        if version > len(migrations):
             raise RuntimeError(f"Database schema version {version} is newer than this app")
-        for next_version, statements in enumerate(MIGRATIONS[version:], start=version + 1):
+        for next_version, statements in enumerate(migrations[version:], start=version + 1):
             for statement in statements:
                 connection.execute(statement)
             connection.execute(f"PRAGMA user_version = {next_version}")

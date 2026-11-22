@@ -56,7 +56,7 @@ export type PortfolioHistory = {
   warnings: string[]
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch('/api' + path, options)
   if (!response.ok) {
     const payload = await response.json().catch(() => null)

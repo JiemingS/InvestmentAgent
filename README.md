@@ -1,6 +1,6 @@
 # Personal Investment Intelligence Agent
 
-The local USD portfolio app combines a SQLite transaction ledger with cached Yahoo Finance daily prices. The React UI reads and writes the ledger through FastAPI and displays market value, allocation, and daily candlesticks with transaction markers.
+The app combines a local USD portfolio, cached Yahoo Finance daily prices, an official US economic calendar, and independently entered financial news research in a React and FastAPI interface.
 
 ## Start on Windows
 
@@ -30,9 +30,23 @@ Open [the portfolio](http://127.0.0.1:5173) or [the FastAPI documentation](http:
 
 ## Data and migrations
 
-The default database is `.data/portfolio.sqlite3` under the repository root. Set `INVESTMENT_DB_PATH` to an absolute path to use another file. The application applies sequential SQLite migrations on startup and records the schema version in `PRAGMA user_version`.
+The default databases are `.data/portfolio.sqlite3` and `.data/research.sqlite3` under the repository root. Set `INVESTMENT_DB_PATH` or `INVESTMENT_RESEARCH_DB_PATH` to an absolute path to override either one. Keep the two paths separate. The application applies sequential migrations on startup and records each schema version in `PRAGMA user_version`.
 
 To back up the database, stop the backend and copy the SQLite file to a private location. To restore, stop the backend, save a copy of the current file, replace it with the backup, and restart. Back up before upgrading schema versions.
+
+## Economic calendar
+
+- **Economic calendar** supports upcoming and historical date ranges, agency and event-type filters, and chronological sorting. The Fed adapter reads FOMC meeting ranges and published releases. The BEA adapter covers national GDP and Personal Income and Outlays, including the PCE release. BLS covers CPI, PPI, and the Employment Situation.
+- Timestamps are normalized to UTC and displayed in America/Chicago. Published date-only events remain date-only. The app retains successful data when a refresh fails and shows source links, coverage, and verification status.
+- The calendar refreshes daily while the server runs and checks for a due refresh when opened. Use **Refresh official sources** to refresh on demand. Historical coverage depends on what the agency publishes and what has previously been cached.
+- The BLS adapter requests the official feed. If automated access is denied, download the official `.ics` export from [the BLS schedule](https://www.bls.gov/schedule/news_release/) and choose **Import official BLS .ics**. Set the optional `INVESTMENT_BLS_CONTACT` environment variable to a contact email for the automated request's User-Agent under the [BLS terms](https://www.bls.gov/bls/blsterms.htm).
+
+## Financial research
+
+- **Research** sends only the public topic or ticker entered in that view, plus the selected 7-, 30-, or 90-day window, to Exa MCP. It has no access to the transaction ledger. Search results are cached for 30 minutes and page excerpts for one day. When possible, an unavailable provider returns existing excerpts or results with a stale notice.
+- Exa's anonymous endpoint has a free, unpublished rate limit. Set `EXA_API_KEY` in the environment before launching to use an account's quota and rates. Exa publishes a monthly free credit allocation and usage-based pricing. [Exa MCP](https://exa.ai/docs/get-started/exa-mcp) · [Exa pricing](https://exa.ai/pricing)
+- The locked backend dependencies install the local MCP Fetch server. **Read page excerpt** sends a cached article's public URL to that server, which enforces its robots and public network restrictions. Some sites block automated retrieval. The app stores short text excerpts, source URLs, and separate publication, search, and page retrieval times. Publisher domain is shown when the search source does not provide a publisher name. Dates absent from source metadata stay blank. [MCP Fetch](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch)
+- The API docs cover `/api/events`, `/api/events/refresh`, `/api/events/bls/import`, `/api/research/recent`, `/api/research/search`, and `/api/research/articles/{article_id}/fetch`.
 
 ## Verification
 
@@ -45,4 +59,4 @@ npm.cmd --prefix frontend run build
 
 ## Open integrations
 
-Calendar, MCP research, and Gemma chat integrations are pending. Automated BLS refresh remains open because the development host received access-denied responses from both official endpoints listed in [PROJECT_PLAN.md](PROJECT_PLAN.md).
+Gemma orchestration and cited chat are planned for Milestone 4. FRED remains optional.

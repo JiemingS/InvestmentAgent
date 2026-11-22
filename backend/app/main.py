@@ -1,5 +1,6 @@
+import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -13,6 +14,12 @@ from .exchange import FIRST_MARKET_DATE
 from .market import MarketDataService, MarketProvider
 from .market_models import MarketHistory
 from .portfolio import OversellError
+from .research.calendar_service import CalendarService
+from .research.calendars import OfficialCalendars
+from .research.mcp_research import MCPResearch
+from .research.research_service import ResearchService
+from .research.routes import router as research_router
+from .research.store import migrate_research
 from .schemas import (
     PortfolioHistory, PortfolioSummary, PortfolioValuation, Position, Side,
     Symbol, Transaction, TransactionInput,
@@ -66,11 +73,30 @@ def create_app(database: Path | None = None, provider: MarketProvider | None = N
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         migrate(application.state.database)
-        yield
+        migrate_research(application.state.research_database)
+        daily = asyncio.create_task(application.state.economic_calendar.refresh_daily())
+        try:
+            yield
+        finally:
+            daily.cancel()
+            with suppress(asyncio.CancelledError):
+                await daily
 
     application = FastAPI(title="Personal Investment Intelligence Agent", lifespan=lifespan)
     application.state.database = database or Path(os.getenv("INVESTMENT_DB_PATH", str(DEFAULT_DATABASE)))
     application.state.market = MarketDataService(application.state.database, provider or YahooProvider())
+    research_default = application.state.database.with_name("research.sqlite3")
+    research_database = Path(os.getenv("INVESTMENT_RESEARCH_DB_PATH", str(research_default)))
+    if research_database.resolve() == application.state.database.resolve():
+        raise ValueError("The research database must be separate from the portfolio database.")
+    application.state.research_database = research_database
+    application.state.economic_calendar = CalendarService(
+        research_database, OfficialCalendars(os.getenv("INVESTMENT_BLS_CONTACT")),
+    )
+    application.state.financial_research = ResearchService(
+        research_database, MCPResearch(os.getenv("EXA_API_KEY")),
+    )
+    application.include_router(research_router)
 
     @application.exception_handler(OversellError)
     async def oversell_handler(_request: Request, error: OversellError):

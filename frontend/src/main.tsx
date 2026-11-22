@@ -7,6 +7,8 @@ import { daysAgo, money, quoteTime } from './format'
 import './style.css'
 
 const MarketPanels = lazy(() => import('./MarketPanels'))
+const CalendarPanel = lazy(() => import('./CalendarPanel'))
+const ResearchPanel = lazy(() => import('./ResearchPanel'))
 
 function emptyTrade(): TradeInput {
   return { symbol: '', side: 'BUY', trade_date: daysAgo(), quantity: '', unit_price: '', fees: '0', currency: 'USD' }
@@ -199,4 +201,23 @@ function App() {
   )
 }
 
-createRoot(document.getElementById('root')!).render(<App />)
+function Workspace() {
+  const [view, setView] = useState<'portfolio' | 'calendar' | 'research'>('portfolio')
+  return <>
+    <nav className="primary-nav" aria-label="Main navigation">
+      <button type="button" aria-current={view === 'portfolio' ? 'page' : undefined}
+        onClick={() => setView('portfolio')}>Portfolio</button>
+      <button type="button" aria-current={view === 'calendar' ? 'page' : undefined}
+        onClick={() => setView('calendar')}>Economic calendar</button>
+      <button type="button" aria-current={view === 'research' ? 'page' : undefined}
+        onClick={() => setView('research')}>Research</button>
+    </nav>
+    {view === 'portfolio' ? <App /> : <main>
+      <Suspense fallback={<p role="status">Loading workspace…</p>}>
+        {view === 'calendar' ? <CalendarPanel /> : <ResearchPanel />}
+      </Suspense>
+    </main>}
+  </>
+}
+
+createRoot(document.getElementById('root')!).render(<Workspace />)
