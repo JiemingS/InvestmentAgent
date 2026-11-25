@@ -132,6 +132,7 @@ test('sends the full prompt in the selected chat without replacing drafts or his
   })
   const saved = entry('Public update', 'A full public prompt.\nKeep this second line.')
   const { page, quick, sent, created } = await fixture({ prompts: [saved], chats: [first, second] }, t)
+  await page.getByText('Conversation history', { exact: true }).click()
   await page.getByRole('button', { name: second.title }).click()
   await page.getByText('An earlier question.', { exact: true }).waitFor()
   await page.getByLabel('Your question').fill('An unsent draft')

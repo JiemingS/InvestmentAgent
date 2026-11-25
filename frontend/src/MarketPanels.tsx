@@ -5,12 +5,22 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { loadHistory, loadMarket } from './api'
 import type { MarketHistory, PortfolioHistory, Position, Trade } from './api'
+import { readChartTheme } from './chartTheme'
 import { daysAgo, quoteTime } from './format'
 
 const Candles = lazy(() => import('./Candles'))
 
 echarts.use([LineChart, PieChart, GridComponent, TooltipComponent, CanvasRenderer])
-const colors = ['#1f6855', '#498cac', '#aa692f', '#7859a2', '#617b34', '#ba606f']
+function chartOptions(theme: ReturnType<typeof readChartTheme>) {
+  return {
+    color: theme.series,
+    textStyle: { color: theme.text },
+  }
+}
+
+function tooltipColors(theme: ReturnType<typeof readChartTheme>) {
+  return { backgroundColor: theme.surface, borderColor: theme.muted, textStyle: { color: theme.text } }
+}
 
 function PortfolioCharts({ history, positions, failed }: {
   history: PortfolioHistory | null; positions: Position[]; failed: boolean
@@ -24,15 +34,19 @@ function PortfolioCharts({ history, positions, failed }: {
     if (!history || !valueHost.current) return
     const host = valueHost.current
     const chart = echarts.init(host)
+    const theme = readChartTheme(host)
+    const axisLine = { lineStyle: { color: theme.muted } }
     chart.setOption({
+      ...chartOptions(theme),
       grid: { left: 12, right: 20, top: 24, bottom: 12, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: (value: unknown) => value == null ? 'Unavailable' : usd.format(Number(value)) },
-      xAxis: { type: 'category', boundaryGap: false, data: history.points.map(point => point.date) },
-      yAxis: { type: 'value', axisLabel: { formatter: (value: number) => compactUsd.format(value) } },
+      tooltip: { ...tooltipColors(theme), trigger: 'axis', axisPointer: { lineStyle: { color: theme.focus } }, valueFormatter: (value: unknown) => value == null ? 'Unavailable' : usd.format(Number(value)) },
+      xAxis: { type: 'category', boundaryGap: false, axisLine, axisLabel: { color: theme.muted }, data: history.points.map(point => point.date) },
+      yAxis: { type: 'value', axisLabel: { color: theme.muted, formatter: (value: number) => compactUsd.format(value) },
+        splitLine: { lineStyle: { color: theme.border } } },
       series: [{
         type: 'line', name: 'Market value', showSymbol: false, connectNulls: false,
         data: history.points.map(point => point.market_value === null ? null : Number(point.market_value)),
-        lineStyle: { color: colors[0], width: 2 }, areaStyle: { color: '#e6f0eb' },
+        lineStyle: { width: 2 }, areaStyle: { opacity: 0.18 },
       }],
     })
     const observer = new ResizeObserver(() => chart.resize())
@@ -44,11 +58,12 @@ function PortfolioCharts({ history, positions, failed }: {
     if (!allocationHost.current) return
     const host = allocationHost.current
     const chart = echarts.init(host)
+    const theme = readChartTheme(host)
     chart.setOption({
-      color: colors,
-      tooltip: { trigger: 'item', valueFormatter: (value: unknown) => usd.format(Number(value)) },
+      ...chartOptions(theme),
+      tooltip: { ...tooltipColors(theme), trigger: 'item', valueFormatter: (value: unknown) => usd.format(Number(value)) },
       series: [{
-        type: 'pie', radius: ['46%', '72%'], label: { formatter: '{b}\n{d}%' },
+        type: 'pie', radius: ['46%', '72%'], label: { color: theme.text, formatter: '{b}\n{d}%' },
         data: positions.map(position => ({ name: position.symbol, value: Number(position.market_value) })),
       }],
     })

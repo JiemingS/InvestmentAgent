@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { deleteTrade, loadPortfolio, saveTrade } from './api'
 import type { Trade, TradeInput } from './api'
 import { daysAgo, money, quoteTime } from './format'
+import SymbolField from './SymbolField'
+import './themes/deep-navy.css'
 import './style.css'
 
 const MarketPanels = lazy(() => import('./MarketPanels'))
@@ -11,8 +13,10 @@ const CalendarPanel = lazy(() => import('./CalendarPanel'))
 const ResearchPanel = lazy(() => import('./ResearchPanel'))
 const AgentPanel = lazy(() => import('./AgentPanel'))
 
-function emptyTrade(): TradeInput {
-  return { symbol: '', side: 'BUY', trade_date: daysAgo(), quantity: '', unit_price: '', fees: '0', currency: 'USD' }
+type TradeDraft = Omit<TradeInput, 'symbol'> & { symbol: string | null }
+
+function emptyTrade(): TradeDraft {
+  return { symbol: null, side: 'BUY', trade_date: daysAgo(), quantity: '', unit_price: '', fees: '0', currency: 'USD' }
 }
 
 function App() {
@@ -72,9 +76,16 @@ function App() {
     }
   }
 
+  const savedSymbols = [...new Set(portfolio?.trades.map(row => row.symbol))].sort()
+  const largestPosition = portfolio?.positions.reduce<(typeof portfolio.positions)[number] | undefined>(
+    (largest, position) => !largest || Number(position.shares) > Number(largest.shares) ? position : largest,
+    undefined,
+  )
+  const symbol = trade.symbol ?? largestPosition?.symbol ?? ''
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    void mutate(() => saveTrade(trade, editing), editing === null ? 'Transaction added.' : 'Transaction updated.', true)
+    void mutate(() => saveTrade({ ...trade, symbol }, editing), editing === null ? 'Transaction added.' : 'Transaction updated.', true)
   }
 
   function remove(row: Trade) {
@@ -88,7 +99,7 @@ function App() {
     <main>
       <header className="page-header">
         <div>
-          <h1>Personal Portfolio</h1>
+          <h1>Holdings &amp; Market Data</h1>
           <p>USD · Weighted-average cost basis</p>
         </div>
         <button className="secondary" type="button" disabled={busy || loading} onClick={async () => {
@@ -123,8 +134,8 @@ function App() {
           <form onSubmit={submit}>
             <fieldset disabled={busy || loading}>
               <div className="fields">
-                <label>Symbol<input ref={symbolField} value={trade.symbol} placeholder="VOO" required maxLength={10}
-                  onChange={event => setTrade({ ...trade, symbol: event.target.value.toUpperCase() })} /></label>
+                <SymbolField inputRef={symbolField} value={symbol} symbols={savedSymbols}
+                  onChange={symbol => setTrade(draft => ({ ...draft, symbol }))} />
                 <label>Side<select value={trade.side} onChange={event => setTrade({ ...trade, side: event.target.value as TradeInput['side'] })}>
                   <option value="BUY">Buy</option><option value="SELL">Sell</option>
                 </select></label>
@@ -210,7 +221,7 @@ function Workspace() {
   return <>
     <nav className="primary-nav" aria-label="Main navigation">
       <button type="button" aria-current={view === 'portfolio' ? 'page' : undefined}
-        onClick={() => setView('portfolio')}>Portfolio</button>
+        onClick={() => setView('portfolio')}>Holdings</button>
       <button type="button" aria-current={view === 'calendar' ? 'page' : undefined}
         onClick={() => setView('calendar')}>Economic calendar</button>
       <button type="button" aria-current={view === 'research' ? 'page' : undefined}

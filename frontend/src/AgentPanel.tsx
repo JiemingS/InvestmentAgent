@@ -171,18 +171,22 @@ function AnswerView({ turn, answer }: { turn: string; answer: Answer }) {
   </>
 }
 
-function ToolHistory({ activity, running = false }: { activity: Activity[]; running?: boolean }) {
+function ToolActivity({ activity }: { activity: Activity[] }) {
   const latest = [...new Map(activity.map(item => [item.id, item])).values()]
-  if (!latest.length) return null
-  return <details className="agent-answer-section" open={running}>
-    <summary>Tool activity</summary>
-    <ul className="agent-activity">{latest.map(item => <li key={item.id}>
+  if (!latest.length) return <p className="muted">No tool activity yet.</p>
+  return <ul className="agent-activity">{latest.map(item => <li key={item.id}>
       <strong>{toolLabels[item.tool] ?? item.tool}</strong> · {statusLabels[item.status]}
       <span className="muted"> · {quoteTime(item.at)}{item.duration_ms != null ? ' · ' + item.duration_ms + ' ms' : ''}</span>
       {item.detail && <p className="muted">{item.detail}</p>}
       {item.arguments && <p className="muted">{Object.entries(item.arguments).map(([key, value]) =>
         key + '=' + JSON.stringify(value)).join(' · ')}</p>}
     </li>)}</ul>
+}
+
+function ToolHistory({ activity, running = false }: { activity: Activity[]; running?: boolean }) {
+  return activity.length > 0 && <details className="agent-answer-section" open={running}>
+    <summary>Tool activity</summary>
+    <ToolActivity activity={activity} />
   </details>
 }
 
@@ -197,7 +201,6 @@ export default function AgentPanel() {
   const [pending, setPending] = useState<{ conversation: string; turn: string } | null>(null)
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [collapsed, setCollapsed] = useState(false)
   const [error, setError] = useState('')
   const active = useRef<AbortController | null>(null)
   const selected = useRef<string | null>(null)
@@ -383,26 +386,32 @@ export default function AgentPanel() {
 
   const turns = thread?.turns ?? []
   const workingHere = pending?.conversation === thread?.id && pending !== null
-  return <div className={'agent-layout' + (collapsed ? ' agent-collapsed' : '')}>
+  const latestTurn = turns.at(-1)
+  return <div className="agent-layout">
     <aside className="agent-sidebar" aria-label="Conversation history">
-      <div className="agent-sidebar-actions">
-        <button type="button" className="secondary" aria-expanded={!collapsed}
-          onClick={() => setCollapsed(value => !value)}>{collapsed ? 'Show history' : 'Hide history'}</button>
-        <button type="button" disabled={loading} onClick={() => void newChat()}>New chat</button>
-      </div>
-      {!collapsed && <ul className="agent-history">
-        {conversations.map(item => <li key={item.id} className={thread?.id === item.id ? 'current-chat' : ''}>
-          <button type="button" className="chat-title" title={item.title}
-            aria-current={thread?.id === item.id ? 'page' : undefined}
-            onClick={() => { if (selected.current !== item.id || !thread) void open(item.id) }}>{item.title}</button>
-          {thread?.id === item.id && <div className="chat-actions">
-            <button type="button" className="secondary" onClick={() => void rename(item)}>Rename</button>
-            <button type="button" className="secondary delete" disabled={workingHere || viewedPending}
-              onClick={() => void remove(item)}>Delete</button>
-          </div>}
-        </li>)}
-      </ul>}
+      <button type="button" className="agent-new-chat" disabled={loading}
+        onClick={() => void newChat()}>New chat</button>
+      <details className="agent-history-panel">
+        <summary>Conversation history</summary>
+        <ul className="agent-history">
+          {conversations.map(item => <li key={item.id} className={thread?.id === item.id ? 'current-chat' : ''}>
+            <button type="button" className="chat-title" title={item.title}
+              aria-current={thread?.id === item.id ? 'page' : undefined}
+              onClick={() => { if (selected.current !== item.id || !thread) void open(item.id) }}>{item.title}</button>
+            {thread?.id === item.id && <div className="chat-actions">
+              <button type="button" className="secondary" onClick={() => void rename(item)}>Rename</button>
+              <button type="button" className="secondary delete" disabled={workingHere || viewedPending}
+                onClick={() => void remove(item)}>Delete</button>
+            </div>}
+          </li>)}
+        </ul>
+      </details>
     </aside>
+    <details className="agent-activity-panel">
+      <summary>Agent activity{workingHere ? ' · Running' : ''}</summary>
+      {latestTurn?.error && <p className="muted">{latestTurn.error}</p>}
+      <ToolActivity activity={latestTurn?.activity ?? []} />
+    </details>
     <section className="agent-main" aria-label="Local Agent chat">
       <header className="agent-heading">
         <h1>{thread?.title ?? 'Local Investment Agent'}</h1>
@@ -415,7 +424,7 @@ export default function AgentPanel() {
           <div className="agent-question"><strong>You</strong><span className="muted"> {quoteTime(turn.created_at)}</span>
             <p>{turn.question}</p>
           </div>
-          <div className="panel agent-response">
+          <div className="agent-response">
             <strong>Local Agent</strong>
             <ToolHistory activity={turn.activity} running={turn.status === 'pending'} />
             {turn.status === 'pending' && <p className="feedback" role="status">Working on the local analysis…</p>}
@@ -441,7 +450,7 @@ export default function AgentPanel() {
         <QuickPrompts sendDisabled={loading || sending || viewedPending}
           onSend={text => void send(text, { preserveDraft: true })} />
         <form onSubmit={submit}>
-          <label>Your question<textarea required maxLength={1600} rows={3} value={question}
+          <label>Your question<textarea required maxLength={1600} rows={2} value={question}
             onChange={event => setQuestion(event.target.value)} placeholder="Ask about holdings, news, or economic releases" /></label>
           <div className="actions">
             <button type="submit" disabled={loading || sending || viewedPending || !question.trim()}>Ask Gemma</button>

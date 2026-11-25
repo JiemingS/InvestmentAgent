@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { CandlestickSeries, createChart, createSeriesMarkers } from 'lightweight-charts'
+import { ColorType, CandlestickSeries, createChart, createSeriesMarkers } from 'lightweight-charts'
 import type { SeriesMarker, Time } from 'lightweight-charts'
+import { readChartTheme } from './chartTheme'
 import type { MarketHistory, Trade } from './api'
 
 export default function Candles({ history, trades }: { history: MarketHistory; trades: Trade[] }) {
@@ -9,14 +10,20 @@ export default function Candles({ history, trades }: { history: MarketHistory; t
 
   useEffect(() => {
     if (!host.current) return
+    const theme = readChartTheme(host.current)
+    const crosshair = { color: theme.muted, labelBackgroundColor: theme.border }
     const chart = createChart(host.current, {
       autoSize: true,
-      layout: { textColor: '#345249', attributionLogo: true },
-      grid: { vertLines: { color: '#eef3f0' }, horzLines: { color: '#eef3f0' } },
+      layout: { background: { type: ColorType.Solid, color: theme.surface }, textColor: theme.text, attributionLogo: true },
+      grid: { vertLines: { color: theme.border }, horzLines: { color: theme.border } },
+      rightPriceScale: { borderColor: theme.muted },
+      timeScale: { borderColor: theme.muted },
+      crosshair: { vertLine: crosshair, horzLine: crosshair },
     })
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#28735e', downColor: '#a94239', borderVisible: false,
-      wickUpColor: '#28735e', wickDownColor: '#a94239',
+      upColor: theme.gain, downColor: theme.loss, borderVisible: false,
+      wickUpColor: theme.gain, wickDownColor: theme.loss,
+      priceLineColor: theme.border,
     })
     series.setData(history.bars.map(bar => ({
       time: bar.date, open: Number(bar.open), high: Number(bar.high), low: Number(bar.low), close: Number(bar.close),
@@ -24,7 +31,7 @@ export default function Candles({ history, trades }: { history: MarketHistory; t
     const markers: SeriesMarker<Time>[] = trades.filter(trade => dates.has(trade.trade_date)).map(trade => ({
       time: trade.trade_date,
       position: trade.side === 'BUY' ? 'belowBar' : 'aboveBar',
-      color: trade.side === 'BUY' ? '#1f6855' : '#a94239',
+      color: trade.side === 'BUY' ? theme.gain : theme.loss,
       shape: trade.side === 'BUY' ? 'arrowUp' : 'arrowDown',
       text: trade.side,
     }))
