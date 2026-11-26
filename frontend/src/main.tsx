@@ -213,21 +213,46 @@ function App() {
   )
 }
 
+const navigationItems = [
+  { view: 'portfolio', label: 'Holdings', icon: 'M3 4v16h18M8 15v-3m5 3V8m5 7V5' },
+  { view: 'calendar', label: 'Economic calendar', icon: 'M4 5h16v15H4zM8 3v4m8-4v4M4 10h16m-12 5h2m4 0h2' },
+  { view: 'research', label: 'Research', icon: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0Zm-1.8 4.2L20 20' },
+  { view: 'agent', label: 'Local Agent', icon: 'M4 7h16v12H4zM12 4v3m-9 6H2m20 0h-1M9 12v1m6-1v1m-6 3h6' },
+] as const
+
+function NavigationIcon({ path }: { path: string }) {
+  return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={path} />
+  </svg>
+}
+
 function Workspace() {
   const [view, setView] = useState<'portfolio' | 'calendar' | 'research' | 'agent'>(() =>
     sessionStorage.getItem('investment-agent.active-view') === 'agent' ? 'agent' : 'portfolio')
   const [hasOpenedAgent, setHasOpenedAgent] = useState(view === 'agent')
+  const [navExpanded, setNavExpanded] = useState(false)
   useEffect(() => { sessionStorage.setItem('investment-agent.active-view', view) }, [view])
   return <>
-    <nav className="primary-nav" aria-label="Main navigation">
-      <button type="button" aria-current={view === 'portfolio' ? 'page' : undefined}
-        onClick={() => setView('portfolio')}>Holdings</button>
-      <button type="button" aria-current={view === 'calendar' ? 'page' : undefined}
-        onClick={() => setView('calendar')}>Economic calendar</button>
-      <button type="button" aria-current={view === 'research' ? 'page' : undefined}
-        onClick={() => setView('research')}>Research</button>
-      <button type="button" aria-current={view === 'agent' ? 'page' : undefined}
-        onClick={() => { setHasOpenedAgent(true); setView('agent') }}>Local Agent</button>
+    <nav className="primary-nav" data-expanded={navExpanded} aria-label="Main navigation">
+      <button type="button" className="nav-toggle" aria-expanded={navExpanded} aria-controls="primary-nav-items"
+        aria-label={navExpanded ? 'Collapse navigation' : 'Expand navigation'}
+        title={navExpanded ? 'Collapse navigation' : 'Expand navigation'}
+        onClick={() => setNavExpanded(expanded => !expanded)}>
+        <NavigationIcon path="M3 5h18v14H3zM9 5v14" />
+      </button>
+      <div id="primary-nav-items" className="nav-items">
+        {navigationItems.map(({ view: destination, label, icon }) => (
+          <button key={destination} type="button" aria-current={view === destination ? 'page' : undefined}
+            aria-label={label} title={navExpanded ? undefined : label} onClick={() => {
+              if (destination === 'agent') setHasOpenedAgent(true)
+              setView(destination)
+            }}>
+            <NavigationIcon path={icon} />
+            <span className="nav-label" aria-hidden="true">{label}</span>
+          </button>
+        ))}
+      </div>
     </nav>
     {view === 'portfolio' ? <App /> : view !== 'agent' && <main key="research">
       <Suspense fallback={<p role="status">Loading workspace…</p>}>
