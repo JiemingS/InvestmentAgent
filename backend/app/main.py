@@ -19,6 +19,7 @@ from .market import MarketDataService, MarketProvider
 from .market_models import MarketHistory
 from .portfolio import OversellError
 from .research.calendar_service import CalendarService
+from .research.polymarket import Polymarket
 from .research.calendars import OfficialCalendars
 from .research.mcp_research import MCPResearch
 from .research.research_service import ResearchService
@@ -103,6 +104,7 @@ def create_app(database: Path | None = None, provider: MarketProvider | None = N
     application.state.economic_calendar = CalendarService(
         research_database, OfficialCalendars(os.getenv("INVESTMENT_BLS_CONTACT")),
     )
+    application.state.polymarket = Polymarket()
     application.state.financial_research = ResearchService(
         research_database, MCPResearch(os.getenv("EXA_API_KEY")),
     )

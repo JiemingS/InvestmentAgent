@@ -191,6 +191,53 @@ tbody tr:last-child > * { border-bottom: 0; }
 .research-query { flex: 1 1 240px; }
 .calendar-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .calendar-sources p { margin-top: 6px; }
+.calendar-table-wrap { border: 1px solid var(--color-border); border-radius: 8px; }
+.calendar-table { table-layout: fixed; }
+.calendar-table :is(th, td) { padding: 12px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+.calendar-table thead th { padding-block: 9px; }
+.calendar-table tbody tr:hover { background: color-mix(in srgb, var(--color-selected) 35%, var(--color-surface)); }
+.calendar-table .calendar-schedule { width: 180px; }
+.calendar-date, .calendar-event-title { font-weight: 650; }
+.calendar-schedule .muted { margin-top: 3px; }
+.calendar-event-meta {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-top: 5px;
+  color: var(--color-text-secondary); font-size: .8rem; font-weight: 400;
+}
+.calendar-status { padding: 1px 6px; border: 1px solid var(--color-border); border-radius: 4px; }
+.calendar-status[data-status="confirmed"] { color: var(--color-success); }
+.calendar-status[data-status="estimated"] { color: var(--color-warning); }
+.calendar-status[data-status="cancelled"] { color: var(--color-danger); }
+.calendar-table .calendar-market { width: 42%; }
+.calendar-market-card { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; }
+.calendar-market-card + .calendar-market-card { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+.calendar-market-title { font-weight: 600; }
+.market-highlights { display: flex; flex-wrap: wrap; gap: 4px 10px; list-style: none; margin: 6px 0; padding: 0; }
+.market-highlights li { display: inline-flex; align-items: center; gap: 5px; }
+.market-probability {
+  display: inline-block; padding: 2px 6px; border-radius: 5px; font-weight: 650; white-space: nowrap;
+  color: var(--color-text-secondary); background: var(--color-background);
+}
+.market-probability[data-tier="55"] { color: var(--color-focus); background: var(--color-selected); }
+.market-probability[data-tier="70"] { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface)); }
+.market-probability[data-tier="80"] { color: var(--color-chart-series-tertiary); background: color-mix(in srgb, var(--color-chart-series-tertiary) 12%, var(--color-surface)); }
+.market-probability[data-tier="90"] { color: var(--color-on-accent); background: var(--color-accent); }
+.calendar-market summary { cursor: pointer; color: var(--color-text-secondary); font-size: .85rem; }
+.calendar-market dl { margin: 8px 0; }
+.calendar-market dl div { display: flex; justify-content: space-between; gap: 8px; padding-block: 3px; }
+.calendar-market dd { margin: 0; white-space: nowrap; }
+@media (max-width: 700px) {
+  .calendar-table, .calendar-table :is(thead, tbody, tr, th, td) { display: block; }
+  .calendar-table tbody tr { padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
+  .calendar-table tbody tr:last-child { border-bottom: 0; }
+  .calendar-table tbody :is(th, td) { padding: 0; border: 0; width: auto; }
+  .calendar-table thead th:not(.calendar-schedule) {
+    position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%);
+  }
+  .calendar-table .calendar-schedule { width: auto; }
+  .calendar-table .calendar-event { margin-top: 6px; }
+  .calendar-table tbody .calendar-market { width: auto; margin-top: 8px; }
+  .calendar-table tbody .calendar-market:empty { display: none; }
+}
 .file-button {
   display: inline-flex; align-items: center; padding: 8px 12px; position: relative;
   border: 1px solid var(--color-control-border); border-radius: 6px; color: var(--color-text-primary);

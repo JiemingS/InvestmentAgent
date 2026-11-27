@@ -31,6 +31,15 @@ type CalendarStatus = {
 
 export type CalendarRange = { start: string; end: string; agency: Agency | '' }
 export type CalendarResult = { events: EconomicEvent[]; sources: CalendarStatus[] }
+export type PredictionResult = {
+  matches: Record<string, {
+    title: string
+    url: string
+    outcomes: { label: string; probability: number }[]
+  }[]>
+  checked_at: string | null
+  unavailable: boolean
+}
 
 export function loadEvents(range: CalendarRange, refresh: boolean, signal?: AbortSignal) {
   const params = new URLSearchParams({ start: range.start, end: range.end, refresh: String(refresh) })
@@ -40,6 +49,12 @@ export function loadEvents(range: CalendarRange, refresh: boolean, signal?: Abor
 
 export function refreshEvents(agency: Agency | '') {
   return request<CalendarStatus[]>('/events/refresh' + (agency ? '?agency=' + agency : ''), { method: 'POST' })
+}
+
+export function loadPredictionMarkets(range: CalendarRange, signal?: AbortSignal) {
+  const params = new URLSearchParams({ start: range.start, end: range.end })
+  if (range.agency) params.set('agency', range.agency)
+  return request<PredictionResult>('/events/prediction-markets?' + params, { signal })
 }
 
 export function importBls(file: File) {

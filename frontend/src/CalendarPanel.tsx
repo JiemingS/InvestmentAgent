@@ -1,23 +1,71 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { daysAgo, quoteTime } from './format'
-import { importBls, loadEvents, refreshEvents } from './researchApi'
-import type { Agency, CalendarRange, CalendarResult, EconomicEvent } from './researchApi'
+import { importBls, loadEvents, loadPredictionMarkets, refreshEvents } from './researchApi'
+import type { Agency, CalendarRange, CalendarResult, EconomicEvent, PredictionResult } from './researchApi'
 
 const statusLabels = {
   never: 'Unchecked', ok: 'Refreshed', partial: 'Partially refreshed', error: 'Refresh failed', imported: 'Official file imported',
   confirmed: 'Confirmed', estimated: 'Tentative', unverified: 'Unverified', cancelled: 'Cancelled',
 }
+const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 })
+const calendarDate = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+})
+const calendarTime = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+})
 
-function formatSchedule(event: EconomicEvent) {
-  if (event.scheduled_at_utc) return quoteTime(event.scheduled_at_utc)
-  if (event.event_date === event.end_date) return event.event_date + ' · Time unpublished'
-  return event.event_date + ' to ' + event.end_date + ' · Time unpublished'
+type MarketOutcome = PredictionResult['matches'][string][number]['outcomes'][number]
+
+function marketHighlights(event: EconomicEvent, outcomes: MarketOutcome[]): MarketOutcome[] {
+  if (event.event_type === 'FOMC decision' || event.event_type === 'FOMC meeting') {
+    const directions = [
+      { label: 'Rate cut', pattern: /\b(?:decrease[sd]?|cut[s]?|lower(?:s|ed)?)\b/i },
+      { label: 'No change', pattern: /\b(?:no change|unchanged|hold[s]?)\b/i },
+      { label: 'Rate hike', pattern: /\b(?:increase[sd]?|hike[s]?|raise[sd]?)\b/i },
+    ]
+    const classified = outcomes.map(outcome => ({
+      ...outcome, directions: directions.filter(({ pattern }) => pattern.test(outcome.label)),
+    }))
+    if (classified.every(outcome => outcome.directions.length === 1)) {
+      const grouped = directions.flatMap(direction => {
+        const matching = classified.filter(outcome => outcome.directions[0] === direction)
+        const probability = matching.reduce((total, outcome) => total + outcome.probability, 0)
+        return matching.length && probability <= 1 ? [{ label: direction.label, probability }] : []
+      })
+      if (grouped.length === directions.length) return grouped
+    }
+  }
+  return [...outcomes].sort((a, b) => b.probability - a.probability).slice(0, 3)
+}
+
+function Probability({ value }: { value: number }) {
+  const rounded = Math.round(value * 1000) / 10
+  const tier = rounded >= 90 ? 90 : rounded >= 80 ? 80 : rounded >= 70 ? 70 : rounded >= 55 ? 55 : 0
+  return <span className="market-probability" data-tier={tier}>{percent.format(rounded / 100)}</span>
+}
+
+function EventSchedule({ event }: { event: EconomicEvent }) {
+  const timestamp = event.scheduled_at_utc ? new Date(event.scheduled_at_utc) : null
+  const first = timestamp ?? new Date(event.event_date + 'T12:00:00Z')
+  const dateLabel = event.event_date !== event.end_date && !timestamp
+    ? calendarDate.formatRange(first, new Date(event.end_date + 'T12:00:00Z'))
+    : calendarDate.format(first)
+  return <>
+    <div className="calendar-date">{dateLabel}</div>
+    <div className="muted">{timestamp ? calendarTime.format(timestamp) : 'Time unpublished'}</div>
+  </>
 }
 
 export default function CalendarPanel() {
   const [range, setRange] = useState<CalendarRange>(() => ({ start: daysAgo(), end: daysAgo(-30), agency: '' }))
+  const [appliedRange, setAppliedRange] = useState(range)
   const [result, setResult] = useState<CalendarResult | null>(null)
+  const [predictions, setPredictions] = useState<PredictionResult | null>(null)
+  const [predictionError, setPredictionError] = useState(false)
+  const [predictionBusy, setPredictionBusy] = useState(false)
+  const [predictionRefresh, setPredictionRefresh] = useState(0)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   const [kind, setKind] = useState('')
@@ -37,12 +85,29 @@ export default function CalendarPanel() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    if (!result?.events.length) return
+    const controller = new AbortController()
+    setPredictionBusy(true)
+    setPredictionError(false)
+    void loadPredictionMarkets(appliedRange, controller.signal)
+      .then(data => { if (!controller.signal.aborted) setPredictions(data) })
+      .catch(() => { if (!controller.signal.aborted) setPredictionError(true) })
+      .finally(() => { if (!controller.signal.aborted) setPredictionBusy(false) })
+    return () => controller.abort()
+  }, [appliedRange, result, predictionRefresh])
+
   async function run(selected: CalendarRange, operation?: () => Promise<unknown>) {
     setBusy(true)
     setError('')
     try {
       await operation?.()
-      setResult(await loadEvents(selected, !operation))
+      const data = await loadEvents(selected, !operation)
+      setAppliedRange(selected)
+      setPredictions(null)
+      setPredictionBusy(false)
+      setPredictionError(false)
+      setResult(data)
       setKind('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -65,6 +130,7 @@ export default function CalendarPanel() {
   const kinds = [...new Set(result?.events.map(event => event.event_type))].sort()
   const rows = result?.events.filter(event => !kind || event.event_type === kind) ?? []
   if (newestFirst) rows.reverse()
+  const hasMatches = rows.some(event => predictions?.matches[event.id]?.length)
 
   return <>
     <header className="page-header"><div>
@@ -125,21 +191,60 @@ export default function CalendarPanel() {
             {kinds.map(value => <option key={value}>{value}</option>)}
           </select></label>
         </div>
-        <div className="table-wrap"><table>
-          <thead><tr><th aria-sort={newestFirst ? 'descending' : 'ascending'}>
+        {result.events.length > 0 && <div className="section-bar">
+          <p className="muted" role="status">
+            {predictionBusy ? 'Checking Polymarket…' :
+              predictionError || predictions?.unavailable ? 'Some Polymarket data is unavailable.' :
+                predictions?.checked_at && hasMatches ? 'Polymarket checked ' + quoteTime(predictions.checked_at) :
+                  predictions ? 'No matching open Polymarket markets for these events.' : ''}
+          </p>
+          <button type="button" className="secondary" disabled={predictionBusy || busy}
+            onClick={() => setPredictionRefresh(value => value + 1)}>Check Polymarket</button>
+        </div>}
+        <div className="table-wrap calendar-table-wrap"><table className="calendar-table" role="table" aria-label="Economic events">
+          <thead role="rowgroup"><tr role="row"><th className="calendar-schedule" role="columnheader"
+            aria-sort={newestFirst ? 'descending' : 'ascending'}>
             <button type="button" className="sort-button" onClick={() => setNewestFirst(!newestFirst)}>
               Schedule {newestFirst ? '↓' : '↑'}
             </button>
-          </th><th>Event</th><th>Agency</th><th>Status</th><th>Source</th></tr></thead>
-          <tbody>
-            {rows.map(event => <tr key={event.id}>
-              <td title={event.original_time ?? event.timezone}>{formatSchedule(event)}</td>
-              <th className="wrap-cell" scope="row">{event.title}</th>
-              <td>{event.agency}</td><td>{statusLabels[event.status]}</td>
-              <td><a href={event.source_url} target="_blank" rel="noreferrer"
-                title={'Verified ' + quoteTime(event.last_verified_at)}>Official schedule</a></td>
+          </th><th role="columnheader">Event</th>
+            {hasMatches && <th className="calendar-market" role="columnheader">Polymarket · Implied odds</th>}
+          </tr></thead>
+          <tbody role="rowgroup">
+            {rows.map(event => <tr key={event.id} role="row">
+              <td className="calendar-schedule" role="cell" title={event.original_time ?? event.timezone}>
+                <EventSchedule event={event} />
+              </td>
+              <th className="calendar-event" scope="row" role="rowheader">
+                <div className="calendar-event-title">{event.title}</div>
+                <div className="calendar-event-meta">
+                  <span>{event.agency}</span>
+                  <span className="calendar-status" data-status={event.status}>{statusLabels[event.status]}</span>
+                  <a href={event.source_url} target="_blank" rel="noreferrer"
+                    title={'Verified ' + quoteTime(event.last_verified_at)}>Official schedule</a>
+                </div>
+              </th>
+              {hasMatches && <td className="calendar-market" role="cell">
+                {predictions?.matches[event.id]?.map(market => <article className="calendar-market-card" key={market.url}>
+                  <p className="calendar-market-title">{market.title}</p>
+                  <ul className="market-highlights">
+                    {marketHighlights(event, market.outcomes).map(({ label, probability }, index) => <li key={index}>
+                      <span>{label}</span><Probability value={probability} />
+                    </li>)}
+                  </ul>
+                  <details>
+                    <summary>All outcomes</summary>
+                    <dl>
+                      {market.outcomes.map(({ label, probability }, index) => <div key={index}>
+                        <dt>{label}</dt><dd><Probability value={probability} /></dd>
+                      </div>)}
+                    </dl>
+                    <a href={market.url} target="_blank" rel="noreferrer">View on Polymarket</a>
+                  </details>
+                </article>)}
+              </td>}
             </tr>)}
-            {!rows.length && <tr><td colSpan={5} className="empty">No cached events match these filters.</td></tr>}
+            {!rows.length && <tr role="row"><td role="cell" colSpan={2 + Number(hasMatches)} className="empty">No cached events match these filters.</td></tr>}
           </tbody>
         </table></div>
       </section>

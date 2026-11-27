@@ -7,6 +7,7 @@ from .calendar_service import CalendarService
 from .calendars import CalendarError, MAX_CALENDAR_BYTES
 from .mcp_research import ResearchError
 from .models import Agency, Article, ArticleResult, CalendarResult, CalendarStatus, CHICAGO, SearchInput, SearchResult
+from .polymarket import Polymarket, PredictionResult
 from .research_service import ArticleNotFound, ResearchService
 
 router = APIRouter(prefix="/api")
@@ -38,6 +39,16 @@ async def get_events(
 async def refresh_events(request: Request, agency: Agency | None = None) -> list[CalendarStatus]:
     service: CalendarService = request.app.state.economic_calendar
     return await service.refresh(_agencies(agency), force=True)
+
+
+@router.get("/events/prediction-markets")
+async def prediction_markets(
+    request: Request, start: date, end: date, agency: Agency | None = None,
+) -> PredictionResult:
+    calendar = await get_events(request, start, end, agency, refresh=False)
+    service: CalendarService = request.app.state.economic_calendar
+    provider: Polymarket = request.app.state.polymarket
+    return await provider.for_events(calendar.events, service.clock().astimezone(CHICAGO).date())
 
 
 @router.post("/events/bls/import")
