@@ -61,6 +61,20 @@ RESEARCH_MIGRATIONS = (
         )
         """,
     ),
+    (
+        """
+        CREATE TABLE saved_articles (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            publisher TEXT NOT NULL,
+            published_at TEXT,
+            published_date TEXT,
+            saved_at TEXT NOT NULL,
+            summary TEXT NOT NULL
+        )
+        """,
+    ),
 )
 
 

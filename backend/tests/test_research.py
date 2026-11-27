@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 import asyncio
+import json
 import sqlite3
 from types import SimpleNamespace
 
@@ -7,10 +8,68 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.research import mcp_research
-from app.research.mcp_research import ResearchError, parse_exa, public_url
+from app.research.mcp_research import FetchedPage, ResearchError, parse_exa, public_url
 from test_portfolio import record
 
 NOW = datetime(2026, 2, 20, 16, tzinfo=UTC)
+
+
+def test_article_summary_uses_body_and_rejects_unverifiable_quotes(tmp_path):
+    app = create_app(tmp_path / "portfolio.sqlite3")
+    calls = []
+    body = (
+        "The company reported higher revenue in the fourth quarter.\n\n"
+        "Management kept its full-year guidance unchanged.\n\n"
+        "Subscribe to continue reading."
+    )
+
+    class Provider:
+        async def search(self, query, days, retrieved):
+            return parse_exa({"results": [{
+                "title": "Earnings report", "url": "https://news.example/article", "text": "Search snippet only",
+                "publishedDate": "2026-02-19T13:30:00Z",
+            }]}, retrieved, None)
+
+        async def fetch_body(self, url):
+            calls.append(url)
+            return FetchedPage("https://news.example/original", body, False)
+
+    class Model:
+        invalid = False
+
+        async def chat(self, messages, *, schema):
+            payload = messages[-1]["content"]
+            assert "higher revenue" in payload and "guidance unchanged" in payload
+            assert "Search snippet only" not in payload and "Subscribe to continue reading" not in payload
+            second_quote = "Management cut its guidance." if self.invalid else "Management kept its full-year guidance unchanged."
+            return {"content": json.dumps({"points": [
+                {"text": "Quarterly revenue increased.", "paragraph": 1,
+                 "quote": "The company reported higher revenue in the fourth quarter."},
+                {"text": "Guidance was unchanged.", "paragraph": 2, "quote": second_quote},
+                {"text": "This quote is unsupported.", "paragraph": 40, "quote": "This does not exist in the body."},
+            ]})}
+
+    app.state.financial_research.provider = Provider()
+    app.state.local_agent.model = model = Model()
+    with TestClient(app) as client:
+        [article] = client.post("/api/research/search", json={"query": "earnings", "days": 30}).json()["articles"]
+        response = client.post("/api/research/articles/" + article["id"] + "/summary")
+        assert response.status_code == 200
+        answer = response.json()
+        assert answer["is_partial"] and answer["source_url"] == "https://news.example/original"
+        assert [point["paragraph"] for point in answer["points"]] == [1, 2]
+        assert calls == ["https://news.example/article"]
+        assert client.get("/api/research/saved").json() == []
+        endpoint = "/api/research/saved/" + article["id"]
+        assert client.put(endpoint, json={**answer, "source_url": "javascript:alert(1)"}).status_code == 422
+        saved = client.put(endpoint, json=answer).json()
+        assert saved["url"] == article["url"] and saved["published_at"] == article["published_at"]
+        assert saved["summary"] == answer
+        assert client.put(endpoint, json=answer).json() == saved
+        model.invalid = True
+        assert client.post("/api/research/articles/" + article["id"] + "/summary").status_code == 502
+    with TestClient(create_app(tmp_path / "portfolio.sqlite3")) as restarted:
+        assert restarted.get("/api/research/saved").json() == [saved]
 
 
 def test_search_metadata_deduplicates_and_keeps_publication_distinct_from_retrieval():

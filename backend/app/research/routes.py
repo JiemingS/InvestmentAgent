@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 
+from .article_summary import ArticleSummary, SavedArticle
 from .calendar_service import CalendarService
 from .calendars import CalendarError, MAX_CALENDAR_BYTES
 from .mcp_research import ResearchError
@@ -74,6 +75,23 @@ def recent_research(request: Request, limit: Annotated[int, Query(ge=1, le=30)] 
     return service.recent(limit)
 
 
+@router.get("/research/saved")
+def saved_research(request: Request) -> list[SavedArticle]:
+    service: ResearchService = request.app.state.financial_research
+    return service.saved_articles()
+
+
+@router.put("/research/saved/{article_id}")
+def save_research(
+    request: Request, article_id: Annotated[str, Path(pattern=r"^[a-f0-9]{32}$")], summary: ArticleSummary,
+) -> SavedArticle:
+    service: ResearchService = request.app.state.financial_research
+    try:
+        return service.save_article(article_id, summary)
+    except ArticleNotFound as error:
+        raise HTTPException(404, str(error)) from error
+
+
 @router.post("/research/search")
 async def search_research(request: Request, data: SearchInput) -> SearchResult:
     query = " ".join(data.query.split())
@@ -93,6 +111,19 @@ async def fetch_article(
     service: ResearchService = request.app.state.financial_research
     try:
         return await service.fetch_article(article_id, force=force)
+    except ArticleNotFound as error:
+        raise HTTPException(404, str(error)) from error
+    except ResearchError as error:
+        raise HTTPException(502, str(error)) from error
+
+
+@router.post("/research/articles/{article_id}/summary")
+async def summarize_article(
+    request: Request, article_id: Annotated[str, Path(pattern=r"^[a-f0-9]{32}$")],
+) -> ArticleSummary:
+    service: ResearchService = request.app.state.financial_research
+    try:
+        return await service.summarize_article(article_id, request.app.state.local_agent.model)
     except ArticleNotFound as error:
         raise HTTPException(404, str(error)) from error
     except ResearchError as error:

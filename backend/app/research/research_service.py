@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Callable
 
 from ..db import connect
+from ..agent.ollama import Ollama
+from .article_summary import ArticleSummary, SavedArticle, summarize_page
 from .mcp_research import MCPResearch, ResearchError
 from .models import Article, ArticleResult, SearchResult
 
@@ -25,6 +27,7 @@ class ResearchService:
         self.clock = clock or (lambda: datetime.now(UTC))
         self.search_lock = asyncio.Lock()
         self.fetch_lock = asyncio.Lock()
+        self.summary_lock = asyncio.Lock()
 
     def recent(self, limit: int) -> list[Article]:
         with connect(self.database) as connection:
@@ -104,6 +107,36 @@ class ResearchService:
             if not row:
                 raise ArticleNotFound("The article is not in the local research cache.")
             return Article.model_validate(dict(row))
+
+    async def summarize_article(self, article_id: str, model: Ollama) -> ArticleSummary:
+        article = self._article(article_id)
+        async with self.summary_lock:
+            try:
+                async with asyncio.timeout(120):
+                    page = await self.provider.fetch_body(article.url)
+                    return await summarize_page(model, article.title, page)
+            except TimeoutError as error:
+                raise ResearchError("Article summarization timed out. Try again later.") from error
+
+    def saved_articles(self) -> list[SavedArticle]:
+        with connect(self.database) as connection:
+            rows = connection.execute("SELECT * FROM saved_articles ORDER BY saved_at DESC, id")
+            return [SavedArticle.model_validate({**dict(row), "summary": json.loads(row["summary"])}) for row in rows]
+
+    def save_article(self, article_id: str, summary: ArticleSummary) -> SavedArticle:
+        article = self._article(article_id)
+        fields = article.model_dump(include={"id", "title", "url", "publisher", "published_at", "published_date"}, mode="json")
+        with connect(self.database, write=True) as connection:
+            row = connection.execute(
+                """
+                INSERT INTO saved_articles (id, title, url, publisher, published_at, published_date, saved_at, summary)
+                VALUES (:id, :title, :url, :publisher, :published_at, :published_date, :saved_at, :summary)
+                ON CONFLICT(id) DO UPDATE SET summary=excluded.summary
+                RETURNING *
+                """,
+                {**fields, "saved_at": self.clock().isoformat(), "summary": summary.model_dump_json()},
+            ).fetchone()
+            return SavedArticle.model_validate({**dict(row), "summary": json.loads(row["summary"])})
 
     async def fetch_article(self, article_id: str, *, force: bool) -> ArticleResult:
         async with self.fetch_lock:

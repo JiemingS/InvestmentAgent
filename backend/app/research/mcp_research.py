@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 import ipaddress
@@ -18,6 +19,15 @@ EXA_ENDPOINT = "https://mcp.exa.ai/mcp?tools=web_search_advanced_exa"
 MAX_ARTICLES = 6
 SEARCH_EXCERPT_CHARS = 700
 FETCH_EXCERPT_CHARS = 1200
+ARTICLE_FETCH_CHARS = 48_000
+TRUNCATION_NOTICE = "<error>Content truncated."
+
+
+@dataclass(frozen=True)
+class FetchedPage:
+    url: str
+    text: str
+    is_partial: bool
 
 
 class ResearchError(RuntimeError):
@@ -156,6 +166,13 @@ class MCPResearch:
         return parse_exa(payload, now, cutoff)
 
     async def fetch(self, url: str) -> tuple[str, str]:
+        page = await self._fetch_page(url, max_length=3500)
+        return page.url, _short(page.text, FETCH_EXCERPT_CHARS)
+
+    async def fetch_body(self, url: str) -> FetchedPage:
+        return await self._fetch_page(url, max_length=ARTICLE_FETCH_CHARS)
+
+    async def _fetch_page(self, url: str, *, max_length: int) -> FetchedPage:
         if not public_url(url):
             raise ResearchError("The article URL is not a supported public HTTPS address.")
         server = StdioServerParameters(
@@ -166,7 +183,7 @@ class MCPResearch:
             async with asyncio.timeout(20):
                 async with Client(server, read_timeout_seconds=15) as client:
                     result = await client.call_tool("fetch", {
-                        "url": url, "max_length": 3500, "timeout_ms": 10000,
+                        "url": url, "max_length": max_length, "timeout_ms": 10000,
                     })
         except Exception as error:
             raise ResearchError("The local MCP Fetch server is unavailable.") from error
@@ -177,7 +194,8 @@ class MCPResearch:
         if not header or "cannot be simplified" in text[:header.start()].casefold():
             raise ResearchError("MCP Fetch did not return readable page text.")
         final_url = public_url(header[1])
-        excerpt = _short(text[header.end():].split("<error>Content truncated.", 1)[0], FETCH_EXCERPT_CHARS)
-        if not final_url or not excerpt:
+        body, truncated, _ = text[header.end():].partition(TRUNCATION_NOTICE)
+        body = body.strip()
+        if not final_url or not body or body.startswith("<error>"):
             raise ResearchError("MCP Fetch did not return readable page text.")
-        return final_url, excerpt
+        return FetchedPage(final_url, body, bool(truncated))

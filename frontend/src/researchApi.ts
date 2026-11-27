@@ -88,6 +88,15 @@ export type SearchResult = {
 }
 
 type ArticleResult = { article: Article; provider: string; is_stale: boolean; warning: string | null }
+export type ArticleSummary = {
+  points: { text: string; paragraph: number; quote: string }[]
+  source_url: string
+  is_partial: boolean
+}
+export type SavedArticle = Pick<Article, 'id' | 'title' | 'url' | 'publisher' | 'published_at' | 'published_date'> & {
+  saved_at: string
+  summary: ArticleSummary
+}
 
 export function recentResearch(signal?: AbortSignal) {
   return request<Article[]>('/research/recent', { signal })
@@ -102,4 +111,20 @@ export function searchResearch(query: string, days: number, force = false) {
 
 export function fetchArticle(id: string) {
   return request<ArticleResult>('/research/articles/' + encodeURIComponent(id) + '/fetch', { method: 'POST' })
+}
+
+export function summarizeArticle(id: string) {
+  return request<ArticleSummary>('/research/articles/' + encodeURIComponent(id) + '/summary', { method: 'POST' })
+}
+
+export function loadSavedArticles(signal?: AbortSignal) {
+  return request<SavedArticle[]>('/research/saved', { signal })
+}
+
+export function saveResearchArticle(id: string, summary: ArticleSummary) {
+  return request<SavedArticle>('/research/saved/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(summary),
+  })
 }

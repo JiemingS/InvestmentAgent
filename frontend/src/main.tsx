@@ -13,7 +13,7 @@ import './style.css'
 
 const MarketPanels = lazy(() => import('./MarketPanels'))
 const CalendarPanel = lazy(() => import('./CalendarPanel'))
-const ResearchPanel = lazy(() => import('./ResearchPanel'))
+const NewsSearchPanel = lazy(() => import('./NewsSearchPanel'))
 const AgentPanel = lazy(() => import('./AgentPanel'))
 
 type TradeDraft = Omit<TradeInput, 'symbol'> & { symbol: string | null }
@@ -346,7 +346,6 @@ function App() {
 const navigationItems = [
   { view: 'portfolio', label: 'Holdings', icon: 'M3 4v16h18M8 15v-3m5 3V8m5 7V5' },
   { view: 'calendar', label: 'Economic calendar', icon: 'M4 5h16v15H4zM8 3v4m8-4v4M4 10h16m-12 5h2m4 0h2' },
-  { view: 'research', label: 'Research', icon: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0Zm-1.8 4.2L20 20' },
   { view: 'agent', label: 'Local Agent', icon: 'M4 7h16v12H4zM12 4v3m-9 6H2m20 0h-1M9 12v1m6-1v1m-6 3h6' },
 ] as const
 
@@ -358,7 +357,7 @@ function NavigationIcon({ path }: { path: string }) {
 }
 
 function Workspace() {
-  const [view, setView] = useState<'portfolio' | 'calendar' | 'research' | 'agent' | 'settings'>(() => {
+  const [view, setView] = useState<'portfolio' | 'calendar' | 'agent' | 'settings'>(() => {
     const previousView = sessionStorage.getItem('investment-agent.active-view')
     return previousView === 'agent' || previousView === 'settings' ? previousView : 'portfolio'
   })
@@ -370,6 +369,8 @@ function Workspace() {
     }
   })
   const [hasOpenedAgent, setHasOpenedAgent] = useState(view === 'agent')
+  const [agentMode, setAgentMode] = useState<'chat' | 'news'>('chat')
+  const [hasOpenedNews, setHasOpenedNews] = useState(false)
   const [navExpanded, setNavExpanded] = useState(false)
   useEffect(() => { sessionStorage.setItem('investment-agent.active-view', view) }, [view])
   useLayoutEffect(() => {
@@ -411,13 +412,24 @@ function Workspace() {
       </div>
     </nav>
     {view === 'portfolio' ? <App /> : view === 'settings' ?
-      <SettingsPanel theme={theme} onThemeChange={changeTheme} /> : view !== 'agent' && <main key="research">
+      <SettingsPanel theme={theme} onThemeChange={changeTheme} /> : view === 'calendar' && <main key="calendar">
       <Suspense fallback={<p role="status">Loading workspace…</p>}>
-        {view === 'calendar' ? <CalendarPanel /> : <ResearchPanel />}
+        <CalendarPanel />
       </Suspense>
     </main>}
     {hasOpenedAgent && <main className="agent-workspace" hidden={view !== 'agent'} key="agent">
-      <Suspense fallback={<p role="status">Loading local Agent…</p>}><AgentPanel /></Suspense>
+      <div className="agent-modes" role="group" aria-label="Local Agent views">
+        <button type="button" aria-pressed={agentMode === 'chat'}
+          onClick={() => setAgentMode('chat')}>Chat</button>
+        <button type="button" aria-pressed={agentMode === 'news'}
+          onClick={() => { setHasOpenedNews(true); setAgentMode('news') }}>News Search</button>
+      </div>
+      <div hidden={agentMode !== 'chat'}>
+        <Suspense fallback={<p role="status">Loading local Agent…</p>}><AgentPanel /></Suspense>
+      </div>
+      {hasOpenedNews && <div className="agent-news" hidden={agentMode !== 'news'}>
+        <Suspense fallback={<p role="status">Loading news search…</p>}><NewsSearchPanel /></Suspense>
+      </div>}
     </main>}
   </>
 }
