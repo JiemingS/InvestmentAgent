@@ -1,5 +1,6 @@
 export type TradeInput = {
   symbol: string
+  account: string | null
   side: 'BUY' | 'SELL'
   trade_date: string
   quantity: string
@@ -73,14 +74,19 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 export async function loadPortfolio(signal?: AbortSignal) {
   const [trades, valuation] = await Promise.all([
     request<Trade[]>('/transactions', { signal }),
-    request<{ summary: Summary; positions: Position[] }>('/portfolio/valuation', { signal })
-      .then(data => ({ ...data, valuationError: null }))
-      .catch((error: unknown) => ({
-        summary: null, positions: [],
-        valuationError: error instanceof Error ? error.message : String(error),
-      })),
+    loadValuation(undefined, signal),
   ])
   return { trades, ...valuation }
+}
+
+export function loadValuation(account?: string, signal?: AbortSignal) {
+  const query = account === undefined ? '' : '?' + new URLSearchParams({ account })
+  return request<{ summary: Summary | null; positions: Position[] }>('/portfolio/valuation' + query, { signal })
+    .then(data => ({ ...data, valuationError: null }))
+    .catch((error: unknown) => ({
+      summary: null, positions: [],
+      valuationError: error instanceof Error ? error.message : String(error),
+    }))
 }
 
 export function loadMarket(symbol: string, start: string, end: string, signal?: AbortSignal, force = false) {
@@ -91,16 +97,22 @@ export function loadMarket(symbol: string, start: string, end: string, signal?: 
   )
 }
 
-export function loadHistory(start: string, end: string, signal?: AbortSignal) {
-  return request<PortfolioHistory>('/portfolio/history?' + new URLSearchParams({ start, end }), { signal })
+export function loadHistory(start: string, end: string, signal?: AbortSignal, account?: string) {
+  const query = new URLSearchParams({ start, end })
+  if (account !== undefined) query.set('account', account)
+  return request<PortfolioHistory>('/portfolio/history?' + query, { signal })
 }
 
-export function saveTrade(trade: TradeInput, id: number | null) {
-  return request<Trade>(id === null ? '/transactions' : '/transactions/' + id, {
+export async function saveTrade(trade: TradeInput, id: number | null) {
+  const saved = await request<Trade>(id === null ? '/transactions' : '/transactions/' + id, {
     method: id === null ? 'POST' : 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(trade),
   })
+  if (saved.account === undefined) {
+    throw new Error('The running backend does not support investment accounts. Restart Investment Agent, then check the transaction history before retrying.')
+  }
+  return saved
 }
 
 export function deleteTrade(id: number) {

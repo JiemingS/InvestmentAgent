@@ -1,6 +1,6 @@
 # Personal Investment Intelligence Agent — UI Design System
 
-Version: 1.2 | Status: Design specification
+Version: 1.3 | Status: Design specification
 
 ## 1. Design direction
 
@@ -12,7 +12,9 @@ Create a professional, calm, modern financial intelligence workspace that combin
 - Use navy for structural surfaces, blue for interaction, and gold sparingly for brand identity and important AI insights.
 - Prioritize readability, information hierarchy, and consistent interaction over decoration.
 
-## 2. Default dark theme palette
+## 2. Theme palettes
+
+### Deep Navy (default)
 
 | Design token | Hex | Usage |
 |---|---|---|
@@ -30,6 +32,25 @@ Create a professional, calm, modern financial intelligence workspace that combin
 | `warning` | `#F59E0B` | Risk, stale data, warnings |
 | `text-primary` | `#F1F5F9` | Main text |
 | `text-secondary` | `#94A3B8` | Secondary text and metadata |
+
+### Light
+
+| Design token | Hex | Usage |
+|---|---|---|
+| `background` | `#F3F6FB` | Soft blue-gray workspace |
+| `sidebar` | `#EAF0F8` | Navigation sidebar |
+| `surface` | `#FFFFFF` | Cards, forms, and chart surfaces |
+| `border` | `#D2DCE9` | Dividers and chart gridlines |
+| `control-border` | `#75849A` | Input and secondary control boundaries |
+| `primary`, `focus` | `#2057B3` | Primary actions, chart series, and focus rings |
+| `on-primary` | `#FFFFFF` | Text and icons on primary actions |
+| `selected` | `#DAE8FC` | Active navigation and selected controls |
+| `accent` | `#78530C` | AI identity and insights |
+| `success` | `#116846` | Gains and successful tasks |
+| `danger` | `#A52B39` | Losses and errors |
+| `warning` | `#805000` | Risk, stale data, and warnings |
+| `text-primary` | `#17263D` | Main text |
+| `text-secondary` | `#4A5C75` | Secondary text and metadata |
 
 ## 3. Sub-Agent identity colors
 
@@ -59,6 +80,7 @@ Use identity colors for icons, agent labels, workflow nodes and subtle activity 
 ### Layout and interaction
 
 - Left sidebar: navigation such as Overview, Portfolio, Market, AI Agent, and Settings.
+- Settings sits at the bottom of the sidebar with a gear icon and opens a dedicated workspace. The Appearance section offers Deep Navy and Light with side-by-side previews when space allows. Selection applies immediately and is saved in the current browser.
 - Central workspace: dashboard, investment records, charts, or AI conversation depending on the active view.
 - Right activity panel: agent identities, tool calls, execution status, and expandable evidence or error details. Allow collapse to maximize workspace.
 - Maintain keyboard navigation, visible focus states, and responsive behavior on smaller laptop screens.
@@ -87,7 +109,7 @@ On smaller screens, open panels scroll independently and are capped at 26% of vi
 
 ### Financial visualization
 
-- Give both chart libraries the same dark surface, axis text, and grid tokens. Preserve tooltip values and units, and show explicit BUY/SELL text and directional markers for trades.
+- Give both chart libraries the active theme’s surface, axis text, and grid tokens. Preserve tooltip values and units, and show explicit BUY/SELL text and directional markers for trades.
 - Use blue for the primary portfolio series; use distinguishable secondary series and labels when comparing assets.
 - Use green for gains and red for losses (US market convention), with explicit signs and labels.
 - Use gold selectively for important AI insights, not ordinary chart series or warnings.
@@ -143,4 +165,4 @@ Use `data-theme="dark"` on the document root by default. Define a separate light
 
 ## 7. Scope and validation
 
-The dark palette, agent identities, and overall style are the selected design direction. The spacing scale, token naming, suggested file path, and implementation details are proposed defaults. The light palette remains to be designed. The current frontend uses the dark palette. The full light palette and agent identity styling remain future design work.
+The frontend implements Deep Navy and Light with shared semantic tokens. The agent identity palette in section 3 describes future styling.

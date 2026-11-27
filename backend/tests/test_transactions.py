@@ -19,11 +19,12 @@ def client(tmp_path):
 def test_migration_and_crud_persist_across_restarts(tmp_path):
     database = tmp_path / "nested" / "portfolio.sqlite3"
     with TestClient(create_app(database)) as first:
-        original = record(first, symbol=" qqqm ", quantity="0.12345678")
+        original = record(first, symbol=" qqqm ", account="  Roth IRA  ", quantity="0.12345678")
         assert original["symbol"] == "QQQM"
+        assert original["account"] == "Roth IRA"
         assert original["quantity"] == "0.12345678"
     with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute("SELECT typeof(quantity) FROM transactions").fetchone()[0] == "text"
     with TestClient(create_app(database)) as second:
         assert second.get("/api/transactions").json() == [original]
@@ -31,7 +32,11 @@ def test_migration_and_crud_persist_across_restarts(tmp_path):
         update = second.put(url, json=trade(symbol="QQQM", quantity="0.25"))
         assert update.status_code == 200
         assert update.json()["created_at"] == original["created_at"]
+        assert update.json()["account"] == "Roth IRA"
         assert Decimal(update.json()["quantity"]) == Decimal("0.25")
+        update = second.put(url, json=trade(symbol="QQQM", account="Taxable", quantity="0.25"))
+        assert update.status_code == 200
+        assert update.json()["account"] == "Taxable"
     with TestClient(create_app(database)) as third:
         assert third.get("/api/transactions").json() == [update.json()]
         assert third.delete(url).status_code == 204
@@ -57,8 +62,9 @@ def test_upgrade_existing_version_one_database(tmp_path, monkeypatch):
     with TestClient(create_app(database)) as upgraded:
         [preserved] = upgraded.get("/api/transactions").json()
         assert preserved["quantity"] == "0.125"
+        assert preserved["account"] is None
     with db.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute("SELECT count(*) FROM market_prices").fetchone()[0] == 0
 
 
@@ -69,6 +75,7 @@ def test_upgrade_existing_version_one_database(tmp_path, monkeypatch):
         {"trade_date": "2999-01-01"}, {"quantity": "0"}, {"unit_price": "-1"},
         {"unit_price": "NaN"}, {"fees": "-0.01"}, {"quantity": "0.000000001"},
         {"quantity": "10000000000"}, {"currency": "EUR"}, {"quantity": True},
+        {"account": "   "}, {"account": "a" * 81},
     ],
 )
 def test_invalid_transactions_return_422_and_leave_ledger_unchanged(client, changes):

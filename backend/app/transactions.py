@@ -17,9 +17,14 @@ def _ledger(connection: sqlite3.Connection) -> list[Transaction]:
     return [Transaction.model_validate(dict(row)) for row in rows]
 
 
-def list_transactions(path: Path) -> list[Transaction]:
+def list_transactions(path: Path, *, account: str | None = None) -> list[Transaction]:
     with connect(path) as connection:
-        return _ledger(connection)
+        trades = _ledger(connection)
+    # An omitted filter selects all records. An empty value selects legacy records.
+    if account is None:
+        return trades
+    key = account.lower()
+    return [trade for trade in trades if (trade.account or "").lower() == key]
 
 
 def _validate_ledger(connection: sqlite3.Connection) -> None:
@@ -42,8 +47,8 @@ def create_transaction(path: Path, data: TransactionInput) -> Transaction:
         cursor = connection.execute(
             """
             INSERT INTO transactions
-                (symbol, side, trade_date, quantity, unit_price, fees, currency, created_at, updated_at)
-            VALUES (:symbol, :side, :trade_date, :quantity, :unit_price, :fees, :currency, :now, :now)
+                (symbol, account, side, trade_date, quantity, unit_price, fees, currency, created_at, updated_at)
+            VALUES (:symbol, :account, :side, :trade_date, :quantity, :unit_price, :fees, :currency, :now, :now)
             """,
             {**data.model_dump(mode="json"), "now": now},
         )
@@ -57,11 +62,13 @@ def update_transaction(path: Path, transaction_id: int, data: TransactionInput) 
             """
             UPDATE transactions
             SET symbol=:symbol, side=:side, trade_date=:trade_date, quantity=:quantity,
-                unit_price=:unit_price, fees=:fees, currency=:currency, updated_at=:updated_at
+                unit_price=:unit_price, fees=:fees, currency=:currency, updated_at=:updated_at,
+                account=CASE WHEN :account_provided THEN :account ELSE account END
             WHERE id=:id
             """,
             {
                 **data.model_dump(mode="json"),
+                "account_provided": "account" in data.model_fields_set,
                 "id": transaction_id,
                 "updated_at": datetime.now(UTC).isoformat(),
             },

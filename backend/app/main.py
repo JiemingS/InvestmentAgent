@@ -154,15 +154,18 @@ def create_app(database: Path | None = None, provider: MarketProvider | None = N
         return value_portfolio(transactions.list_transactions(path), market).positions
 
     @application.get("/api/portfolio/valuation")
-    def valuation(path: Database, market: Market) -> PortfolioValuation:
-        return value_portfolio(transactions.list_transactions(path), market)
+    def valuation(
+        path: Database, market: Market, account: str | None = None,
+    ) -> PortfolioValuation:
+        return value_portfolio(transactions.list_transactions(path, account=account), market)
 
     @application.get("/api/portfolio/history")
     def history(
         path: Database, market: Market, start: date | None = None, end: date | None = None,
+        account: str | None = None,
     ) -> PortfolioHistory:
         first, last = _date_range(market, start, end)
-        return portfolio_history(transactions.list_transactions(path), market, first, last)
+        return portfolio_history(transactions.list_transactions(path, account=account), market, first, last)
 
     @application.get("/api/market/{symbol}/history")
     def price_history(

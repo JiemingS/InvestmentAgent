@@ -58,6 +58,7 @@ MIGRATIONS = (
         )
         """,
     ),
+    ("ALTER TABLE transactions ADD COLUMN account TEXT",),
 )
 
 

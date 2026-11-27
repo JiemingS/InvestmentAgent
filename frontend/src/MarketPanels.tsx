@@ -22,8 +22,9 @@ function tooltipColors(theme: ReturnType<typeof readChartTheme>) {
   return { backgroundColor: theme.surface, borderColor: theme.muted, textStyle: { color: theme.text } }
 }
 
-function PortfolioCharts({ history, positions, failed }: {
+function PortfolioCharts({ history, positions, failed, valuationLoading, valuationUnavailable }: {
   history: PortfolioHistory | null; positions: Position[]; failed: boolean
+  valuationLoading: boolean; valuationUnavailable: boolean
 }) {
   const valueHost = useRef<HTMLDivElement>(null)
   const allocationHost = useRef<HTMLDivElement>(null)
@@ -83,7 +84,9 @@ function PortfolioCharts({ history, positions, failed }: {
     <section className="panel">
       <h2>Allocation by market value</h2>
       {hasAllocation ? <div className="chart" ref={allocationHost} role="img" aria-label="Current allocation by symbol" /> :
-        <p className="muted">{positions.length ? 'Allocation requires a quote for every open position.' : 'No open positions.'}</p>}
+        <p className="muted">{valuationLoading ? 'Loading allocation…' :
+          valuationUnavailable ? 'Allocation unavailable.' :
+            positions.length ? 'Allocation requires a quote for every open position.' : 'No open positions.'}</p>}
     </section>
   </div>
 }
@@ -91,15 +94,21 @@ function PortfolioCharts({ history, positions, failed }: {
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 const compactUsd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' })
 
-export default function MarketPanels({ trades, positions, onRefresh }: {
+export default function MarketPanels({
+  account, trades, positions, valuationLoading, valuationUnavailable, onRefresh, range, onRangeChange,
+}: {
+  account?: string
   trades: Trade[]
   positions: Position[]
+  valuationLoading: boolean
+  valuationUnavailable: boolean
   onRefresh: () => Promise<void>
+  range: number
+  onRangeChange: (range: number) => void
 }) {
   const symbols = useMemo(() => [...new Set(trades.map(trade => trade.symbol))].sort(), [trades])
   const [selection, setSelection] = useState('')
   const symbol = symbols.includes(selection) ? selection : symbols[0]
-  const [range, setRange] = useState(90)
   const [history, setHistory] = useState<PortfolioHistory | null>(null)
   const [market, setMarket] = useState<MarketHistory | null>(null)
   const [historyError, setHistoryError] = useState('')
@@ -115,13 +124,13 @@ export default function MarketPanels({ trades, positions, onRefresh }: {
     const controller = new AbortController()
     setHistory(null)
     setHistoryError('')
-    loadHistory(start, end, controller.signal).then(data => {
+    loadHistory(start, end, controller.signal, account).then(data => {
       if (!controller.signal.aborted) setHistory(data)
     }).catch(error => {
       if (!controller.signal.aborted) setHistoryError(error.message)
     })
     return () => controller.abort()
-  }, [start, end, trades])
+  }, [start, end, trades, account])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -152,12 +161,13 @@ export default function MarketPanels({ trades, positions, onRefresh }: {
   return <section className="market-section" aria-label="Market charts">
     <div className="section-bar">
       <h2>Market charts</h2>
-      <label>Range<select value={range} disabled={refreshing} onChange={event => setRange(Number(event.target.value))}>
+      <label>Range<select value={range} disabled={refreshing} onChange={event => onRangeChange(Number(event.target.value))}>
         <option value={30}>1 month</option><option value={90}>3 months</option><option value={365}>1 year</option>
       </select></label>
     </div>
     {historyError && <p className="feedback error" role="alert">{historyError}</p>}
-    <PortfolioCharts history={history} positions={positions} failed={Boolean(historyError)} />
+    <PortfolioCharts history={history} positions={positions} failed={Boolean(historyError)}
+      valuationLoading={valuationLoading} valuationUnavailable={valuationUnavailable} />
     {symbol && <section className="panel">
       <div className="section-bar">
         <h2>Daily prices</h2>

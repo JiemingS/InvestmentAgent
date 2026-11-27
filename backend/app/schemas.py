@@ -24,6 +24,7 @@ class Side(StrEnum):
 
 class TransactionInput(BaseModel):
     symbol: Symbol
+    account: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)] | None = None
     side: Side
     trade_date: date
     quantity: PositiveDecimal
