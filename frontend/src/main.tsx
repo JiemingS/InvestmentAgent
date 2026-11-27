@@ -201,7 +201,7 @@ function App() {
         }}>Refresh</button>
       </header>
 
-      <div className="section-bar">
+      <div className="section-bar holdings-account-filter">
         <label>Investment account filter
           <select value={selectedAccount === undefined ? '' : 'account:' + selectedAccount}
             disabled={loading} onChange={event => {
@@ -309,7 +309,7 @@ function App() {
       </div>
 
       {visibleTrades.length > 0 && <Suspense fallback={<p className="muted">Loading market charts…</p>}>
-        <MarketPanels key={selectedAccount === undefined ? 'all' : 'account:' + selectedAccount} account={selectedAccount}
+        <MarketPanels account={selectedAccount}
           trades={visibleTrades} positions={positions} valuationLoading={valuationLoading}
           valuationUnavailable={Boolean(valuation?.valuationError)} onRefresh={refresh}
           range={chartRange} onRangeChange={setChartRange} />

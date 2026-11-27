@@ -1,18 +1,21 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { ColorType, CandlestickSeries, createChart, createSeriesMarkers } from 'lightweight-charts'
-import type { SeriesMarker, Time } from 'lightweight-charts'
+import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, SeriesMarker, Time } from 'lightweight-charts'
 import { readChartTheme } from './chartTheme'
 import type { MarketHistory, Trade } from './api'
 
 export default function Candles({ history, trades }: { history: MarketHistory; trades: Trade[] }) {
   const host = useRef<HTMLDivElement>(null)
+  const chart = useRef<IChartApi>(null)
+  const series = useRef<ISeriesApi<'Candlestick'>>(null)
+  const markerLayer = useRef<ISeriesMarkersPluginApi<Time>>(null)
   const dates = useMemo(() => new Set(history.bars.map(bar => bar.date)), [history])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!host.current) return
     const theme = readChartTheme(host.current)
     const crosshair = { color: theme.muted, labelBackgroundColor: theme.border }
-    const chart = createChart(host.current, {
+    const instance = createChart(host.current, {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: theme.surface }, textColor: theme.text, attributionLogo: true },
       grid: { vertLines: { color: theme.border }, horzLines: { color: theme.border } },
@@ -20,14 +23,27 @@ export default function Candles({ history, trades }: { history: MarketHistory; t
       timeScale: { borderColor: theme.muted },
       crosshair: { vertLine: crosshair, horzLine: crosshair },
     })
-    const series = chart.addSeries(CandlestickSeries, {
+    const candles = instance.addSeries(CandlestickSeries, {
       upColor: theme.gain, downColor: theme.loss, borderVisible: false,
       wickUpColor: theme.gain, wickDownColor: theme.loss,
       priceLineColor: theme.border,
     })
-    series.setData(history.bars.map(bar => ({
+    chart.current = instance
+    series.current = candles
+    markerLayer.current = createSeriesMarkers(candles, [])
+    return () => instance.remove()
+  }, [])
+
+  useLayoutEffect(() => {
+    series.current?.setData(history.bars.map(bar => ({
       time: bar.date, open: Number(bar.open), high: Number(bar.high), low: Number(bar.low), close: Number(bar.close),
     })))
+    chart.current?.timeScale().fitContent()
+  }, [history])
+
+  useLayoutEffect(() => {
+    if (!host.current) return
+    const theme = readChartTheme(host.current)
     const markers: SeriesMarker<Time>[] = trades.filter(trade => dates.has(trade.trade_date)).map(trade => ({
       time: trade.trade_date,
       position: trade.side === 'BUY' ? 'belowBar' : 'aboveBar',
@@ -36,10 +52,8 @@ export default function Candles({ history, trades }: { history: MarketHistory; t
       text: trade.side,
     }))
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)))
-    createSeriesMarkers(series, markers)
-    chart.timeScale().fitContent()
-    return () => chart.remove()
-  }, [history, trades, dates])
+    markerLayer.current?.setMarkers(markers)
+  }, [trades, dates])
 
   const unmatched = trades.filter(trade => !dates.has(trade.trade_date)).length
   return <>

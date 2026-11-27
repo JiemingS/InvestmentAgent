@@ -118,9 +118,20 @@ tbody tr:last-child > * { border-bottom: 0; }
 .market-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
 .section-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .section-bar h2 { margin: 0; }
+.holdings-account-filter {
+  position: sticky; top: 0; z-index: 3; padding-block: 8px;
+  background: var(--color-background); border-bottom: 1px solid var(--color-border);
+}
+.holdings-account-filter label { min-width: 0; max-width: 100%; }
 .chart-controls { display: flex; align-items: end; gap: 8px; }
 .chart { height: 265px; width: 100%; }
 .candles { height: 330px; }
+.chart-frame { position: relative; min-height: 265px; }
+.chart-placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+.chart-content[data-ready="false"] { visibility: hidden; opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .chart-content[data-ready="true"] { transition: opacity 160ms ease-out; }
+}
 #root {
   --nav-collapsed-width: 61px;
   display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 100dvh;
